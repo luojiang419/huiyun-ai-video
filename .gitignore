@@ -1,0 +1,33 @@
+# Workspace-level generated files and local tooling
+/.claude/
+/.vscode/
+
+# Local backups and build outputs
+/backup/
+/dist/
+/进度快照/
+/实测输出/
+
+# Top-level packaged artifacts
+/*.zip
+
+# Repo-local secrets and internal-only files
+/技术文档/api key.md
+/DOCS/公钥/id_ed25519_1panel
+
+# Flutter workspace generated files
+/flutter_grsai_video_gen/.git/
+/flutter_grsai_video_gen/.trae/
+/flutter_grsai_video_gen/.codex_build_assets/
+/flutter_grsai_video_gen/.dart_tool/
+/flutter_grsai_video_gen/build/
+/flutter_grsai_video_gen/dist/
+/flutter_grsai_video_gen/snapshots/
+/flutter_grsai_video_gen/data/Settings/config.json
+/flutter_grsai_video_gen/data/Defaults/config.json
+/flutter_grsai_video_gen/.codex_*.log
+/flutter_grsai_video_gen/flutter_*.log
+/flutter_grsai_video_gen/after_nav_click.png
+/flutter_grsai_video_gen/window_capture_before.png
+/flutter_grsai_video_gen/window_capture_latest.png
+/flutter_grsai_video_gen/plan.md
