@@ -1,43 +1,48 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_version.dart';
-import '../models/update_info.dart';
+import '../models/pending_update_job.dart';
 import '../services/update_service.dart';
 
 enum UpdateStatus {
   idle,
   checking,
-  latest,
-  available,
   downloading,
+  ready,
   installing,
+  latest,
   failed,
 }
 
 class UpdateState {
   final UpdateStatus status;
-  final UpdateInfo? info;
+  final PendingUpdateJob? pendingJob;
   final double progress;
   final String? message;
+  final String? errorMessage;
 
   const UpdateState({
     this.status = UpdateStatus.idle,
-    this.info,
+    this.pendingJob,
     this.progress = 0,
     this.message,
+    this.errorMessage,
   });
 
   UpdateState copyWith({
     UpdateStatus? status,
-    UpdateInfo? info,
+    PendingUpdateJob? pendingJob,
+    bool clearPendingJob = false,
     double? progress,
     String? message,
+    String? errorMessage,
   }) {
     return UpdateState(
       status: status ?? this.status,
-      info: info ?? this.info,
+      pendingJob: clearPendingJob ? null : (pendingJob ?? this.pendingJob),
       progress: progress ?? this.progress,
       message: message,
+      errorMessage: errorMessage,
     );
   }
 }
@@ -54,88 +59,127 @@ final updateProvider = StateNotifierProvider<UpdateNotifier, UpdateState>((
 
 class UpdateNotifier extends StateNotifier<UpdateState> {
   final UpdateService _service;
-  bool _autoChecked = false;
+  bool _startupHandled = false;
 
   UpdateNotifier(this._service) : super(const UpdateState());
 
-  Future<UpdateInfo?> checkForUpdate({
+  Future<PendingUpdateJob?> prepareStartupUpdate() async {
+    if (_startupHandled) {
+      return state.pendingJob;
+    }
+    _startupHandled = true;
+    return checkAndDownloadUpdate(auto: true, includeSkipped: false);
+  }
+
+  Future<PendingUpdateJob?> checkAndDownloadUpdate({
     bool includeSkipped = false,
-    bool quiet = false,
     bool auto = false,
   }) async {
-    if (auto && _autoChecked) {
-      return null;
-    }
-    if (auto) {
-      _autoChecked = true;
-    }
-
-    state = const UpdateState(status: UpdateStatus.checking, message: '正在检查更新');
     try {
-      final info = await _service.checkForUpdate(
+      state = UpdateState(
+        status: UpdateStatus.checking,
+        pendingJob: state.pendingJob,
+        message: auto ? '正在自动检查更新' : '正在检查更新',
+      );
+
+      final recovered = await _service.reconcilePendingUpdate(
+        currentVersion: appReleaseVersion,
+      );
+      if (recovered != null) {
+        state = UpdateState(
+          status: recovered.status == PendingUpdateStatus.failed
+              ? UpdateStatus.failed
+              : UpdateStatus.ready,
+          pendingJob: recovered,
+          progress: 1,
+          message: recovered.status == PendingUpdateStatus.failed
+              ? '检测到上次未完成的更新包，请重新安装'
+              : '已检测到待安装更新 ${recovered.targetVersion}',
+          errorMessage: recovered.lastFailureReason.isEmpty
+              ? null
+              : recovered.lastFailureReason,
+        );
+        return recovered;
+      }
+
+      final job = await _service.downloadLatestUpdateIfNeeded(
         currentVersion: appReleaseVersion,
         includeSkipped: includeSkipped,
+        promptOnNextLaunch: true,
+        onReceiveProgress: (received, total) {
+          final progress = total > 0 ? received / total : 0.0;
+          state = UpdateState(
+            status: UpdateStatus.downloading,
+            progress: progress,
+            message: '正在下载更新包',
+          );
+        },
       );
-      state = info == null
-          ? const UpdateState(status: UpdateStatus.latest, message: '当前已是最新版')
-          : UpdateState(
-              status: UpdateStatus.available,
-              info: info,
-              message: '发现新版本 ${info.version}',
-            );
-      return info;
+
+      if (job == null) {
+        state = const UpdateState(
+          status: UpdateStatus.latest,
+          message: '当前已是最新版',
+        );
+        return null;
+      }
+
+      state = UpdateState(
+        status: UpdateStatus.ready,
+        pendingJob: job,
+        progress: 1,
+        message: '更新包已下载完成：${job.targetVersion}',
+      );
+      return job;
     } catch (error) {
       state = UpdateState(
         status: UpdateStatus.failed,
-        message: error.toString(),
+        pendingJob: state.pendingJob,
+        message: auto ? '自动更新检查失败' : '检查更新失败',
+        errorMessage: error.toString(),
       );
-      if (quiet) {
-        return null;
-      }
       rethrow;
     }
   }
 
-  Future<void> skipVersion(String version) async {
-    await _service.skipVersion(version);
-    state = UpdateState(status: UpdateStatus.latest, message: '已跳过 $version');
+  Future<PendingUpdateJob> scheduleInstallOnNextLaunch({
+    PendingUpdateJob? job,
+  }) async {
+    if (job != null) {
+      await _service.savePendingUpdate(job);
+    }
+    final scheduled = await _service.scheduleInstallOnNextLaunch();
+    state = UpdateState(
+      status: UpdateStatus.ready,
+      pendingJob: scheduled,
+      progress: 1,
+      message: '已设置为下次启动时自动更新',
+    );
+    return scheduled;
   }
 
-  Future<void> downloadAndInstall(
-    UpdateInfo info, {
-    void Function(double progress)? onProgress,
-  }) async {
+  Future<void> installPendingUpdate({PendingUpdateJob? job}) async {
+    final pending =
+        job ?? state.pendingJob ?? await _service.loadPendingUpdate();
+    if (pending == null) {
+      throw const UpdateException('未找到待安装的更新包');
+    }
+
     state = UpdateState(
-      status: UpdateStatus.downloading,
-      info: info,
-      message: '正在下载 ${info.version}',
+      status: UpdateStatus.installing,
+      pendingJob: pending,
+      progress: 1,
+      message: '正在准备安装 ${pending.targetVersion}',
     );
     try {
-      final installerPath = await _service.downloadInstaller(
-        info,
-        onReceiveProgress: (received, total) {
-          final progress = total > 0 ? received / total : 0.0;
-          onProgress?.call(progress);
-          state = UpdateState(
-            status: UpdateStatus.downloading,
-            info: info,
-            progress: progress,
-            message: '正在下载 ${info.version}',
-          );
-        },
-      );
-      state = UpdateState(
-        status: UpdateStatus.installing,
-        info: info,
-        progress: 1,
-        message: '正在启动安装器',
-      );
-      await _service.launchInstallerAndExit(installerPath);
+      await _service.launchSilentUpdateAndExit(job: pending);
     } catch (error) {
       state = UpdateState(
         status: UpdateStatus.failed,
-        info: info,
-        message: error.toString(),
+        pendingJob: pending,
+        progress: 1,
+        message: '安装更新失败',
+        errorMessage: error.toString(),
       );
       rethrow;
     }

@@ -46,16 +46,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.read(videoGalleryProvider);
       ref.read(videoNodesProvider.notifier).refreshStatuses();
       _autoLaunchWan2gp();
-      _checkForUpdatesOnStartup();
+      _handleStartupUpdateFlow();
     });
   }
 
-  Future<void> _checkForUpdatesOnStartup() async {
-    final info = await ref
-        .read(updateProvider.notifier)
-        .checkForUpdate(auto: true, quiet: true);
-    if (!mounted || info == null) return;
-    await showUpdatePromptDialog(context: context, info: info);
+  Future<void> _handleStartupUpdateFlow() async {
+    final job = await ref.read(updateProvider.notifier).prepareStartupUpdate();
+    if (!mounted || job == null) return;
+    await showUpdatePromptDialog(context: context, job: job);
   }
 
   Future<void> _autoLaunchWan2gp() async {

@@ -2,62 +2,70 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_colors.dart';
-import '../models/update_info.dart';
+import '../models/pending_update_job.dart';
 import '../providers/update_provider.dart';
 
 Future<void> showUpdatePromptDialog({
   required BuildContext context,
-  required UpdateInfo info,
+  required PendingUpdateJob job,
 }) {
   return showDialog<void>(
     context: context,
-    barrierDismissible: !info.mandatory,
-    builder: (_) => UpdatePromptDialog(info: info),
+    barrierDismissible: false,
+    builder: (_) => UpdatePromptDialog(job: job),
   );
 }
 
 class UpdatePromptDialog extends ConsumerStatefulWidget {
-  final UpdateInfo info;
+  final PendingUpdateJob job;
 
-  const UpdatePromptDialog({super.key, required this.info});
+  const UpdatePromptDialog({super.key, required this.job});
 
   @override
   ConsumerState<UpdatePromptDialog> createState() => _UpdatePromptDialogState();
 }
 
 class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
-  bool _isDownloading = false;
-  double _progress = 0;
+  bool _isSubmitting = false;
   String? _error;
 
-  Future<void> _skipVersion() async {
-    await ref.read(updateProvider.notifier).skipVersion(widget.info.version);
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
-  }
-
-  Future<void> _downloadAndInstall() async {
+  Future<void> _installNow() async {
     setState(() {
-      _isDownloading = true;
-      _progress = 0;
+      _isSubmitting = true;
       _error = null;
     });
     try {
       await ref
           .read(updateProvider.notifier)
-          .downloadAndInstall(
-            widget.info,
-            onProgress: (progress) {
-              if (mounted) {
-                setState(() => _progress = progress);
-              }
-            },
-          );
+          .installPendingUpdate(job: widget.job);
     } catch (error) {
       if (mounted) {
         setState(() {
-          _isDownloading = false;
+          _isSubmitting = false;
+          _error = error.toString();
+        });
+      }
+    }
+  }
+
+  Future<void> _installOnNextLaunch() async {
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(updateProvider.notifier)
+          .scheduleInstallOnNextLaunch(job: widget.job);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已设置为下次启动时自动安装更新')));
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
           _error = error.toString();
         });
       }
@@ -66,7 +74,7 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final info = widget.info;
+    final info = widget.job.info;
     final notes = info.releaseNotes.trim().isEmpty
         ? '本次更新未填写详细说明。'
         : info.releaseNotes.trim();
@@ -105,19 +113,24 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
                 ),
               ),
             ),
-            if (_isDownloading) ...[
+            if (widget.job.status == PendingUpdateStatus.failed &&
+                widget.job.lastFailureReason.trim().isNotEmpty) ...[
               const SizedBox(height: 18),
-              LinearProgressIndicator(
-                value: _progress > 0 ? _progress : null,
+              Text(
+                '上次自动安装失败：${widget.job.lastFailureReason}',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ],
+            if (_isSubmitting) ...[
+              const SizedBox(height: 18),
+              const LinearProgressIndicator(
                 backgroundColor: Colors.white12,
                 color: AppColors.primary,
               ),
               const SizedBox(height: 8),
-              Text(
-                _progress > 0
-                    ? '正在下载 ${(100 * _progress).clamp(0, 100).toStringAsFixed(0)}%'
-                    : '正在连接下载服务器',
-                style: const TextStyle(color: AppColors.textSecondary),
+              const Text(
+                '正在准备静默安装，请稍候...',
+                style: TextStyle(color: AppColors.textSecondary),
               ),
             ],
             if (_error != null) ...[
@@ -128,16 +141,16 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
         ),
       ),
       actions: [
-        if (!_isDownloading && !info.mandatory)
+        if (!_isSubmitting && !info.mandatory)
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('稍后'),
+            onPressed: _installOnNextLaunch,
+            child: const Text('下次启动时更新'),
           ),
-        if (!_isDownloading && !info.mandatory)
-          TextButton(onPressed: _skipVersion, child: const Text('跳过此版本')),
         ElevatedButton(
-          onPressed: _isDownloading ? null : _downloadAndInstall,
-          child: Text(_error == null ? '下载并安装' : '重试下载'),
+          onPressed: _isSubmitting ? null : _installNow,
+          child: Text(
+            widget.job.status == PendingUpdateStatus.failed ? '重新安装' : '立即更新',
+          ),
         ),
       ],
     );

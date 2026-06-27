@@ -9,6 +9,7 @@ import '../constants/app_colors.dart';
 import '../models/compute_node.dart';
 import '../models/settings.dart';
 import '../providers/settings_provider.dart';
+import '../providers/update_provider.dart';
 import '../providers/video_config_provider.dart';
 import '../providers/video_node_provider.dart';
 import '../services/video_vlm_service.dart';
@@ -313,10 +314,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ).showSnackBar(const SnackBar(content: Text('设置已保存')));
   }
 
+  Future<void> _checkAndInstallUpdateNow() async {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('正在检查并下载更新...')));
+
+    try {
+      final job = await ref
+          .read(updateProvider.notifier)
+          .checkAndDownloadUpdate(includeSkipped: true);
+      if (!mounted) return;
+      if (job == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('当前已是最新版')));
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('更新包已就绪，正在启动安装程序...')));
+      await ref.read(updateProvider.notifier).installPendingUpdate(job: job);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('更新失败：$error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     _syncVideoSettings();
     final nodes = ref.watch(videoNodesProvider);
+    final updateState = ref.watch(updateProvider);
+    final isUpdateBusy =
+        updateState.status == UpdateStatus.checking ||
+        updateState.status == UpdateStatus.downloading ||
+        updateState.status == UpdateStatus.installing;
 
     return Container(
       color: AppColors.background,
@@ -324,9 +359,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '设置',
-            style: TextStyle(color: AppColors.text, fontSize: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '设置',
+                style: TextStyle(color: AppColors.text, fontSize: 24),
+              ),
+              OutlinedButton.icon(
+                onPressed: isUpdateBusy ? null : _checkAndInstallUpdateNow,
+                icon: const Icon(Icons.system_update_alt, size: 18),
+                label: Text(isUpdateBusy ? '更新处理中...' : '检查更新'),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           Expanded(

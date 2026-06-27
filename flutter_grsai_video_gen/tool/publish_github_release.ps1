@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Version = "",
   [string]$Repo = "luojiang419/huiyun-ai-video-releases",
   [string]$ReleaseNotes = "",
@@ -90,6 +90,16 @@ function Upload-ReleaseAsset {
     -ContentType $ContentType
 }
 
+function Write-Utf8NoBomFile {
+  param(
+    [string]$Path,
+    [string]$Content
+  )
+
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
 if (-not (Test-CommandExists "gh")) {
   throw "未找到 GitHub CLI：gh"
 }
@@ -123,8 +133,15 @@ Set-Content -LiteralPath $notesPath -Value $ReleaseNotes -Encoding UTF8
 gh repo view $Repo 1>$null
 Assert-LastExitCode "无法访问 GitHub 仓库：$Repo"
 
-gh release view $Version --repo $Repo 1>$null 2>$null
-$releaseExists = $LASTEXITCODE -eq 0
+$releaseTags = gh release list --repo $Repo --limit 100 --json tagName | ConvertFrom-Json
+Assert-LastExitCode "读取 Release 列表失败：$Repo"
+$releaseExists = $false
+foreach ($releaseTag in $releaseTags) {
+  if ($releaseTag.tagName -eq $Version) {
+    $releaseExists = $true
+    break
+  }
+}
 
 if ($releaseExists) {
   gh release edit $Version --repo $Repo --title "影视版-$Version" --notes-file $notesPath --latest
@@ -161,7 +178,8 @@ $updateInfo = [ordered]@{
   releaseNotes = $ReleaseNotes
   mandatory = $Mandatory
 }
-$updateInfo | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $updateJsonPath -Encoding UTF8
+$updateJsonContent = $updateInfo | ConvertTo-Json -Depth 4
+Write-Utf8NoBomFile -Path $updateJsonPath -Content $updateJsonContent
 
 Upload-ReleaseAsset `
   -ReleaseId $release.id `
@@ -175,3 +193,8 @@ Write-Host "已发布 GitHub Release：$Repo@$Version"
 Write-Host "安装包：$installerName"
 Write-Host "SHA256：$hash"
 Write-Host "update.json：$updateJsonPath"
+
+
+
+
+

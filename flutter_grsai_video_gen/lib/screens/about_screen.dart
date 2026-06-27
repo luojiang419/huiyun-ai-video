@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../constants/app_version.dart';
 import '../constants/app_colors.dart';
 import '../providers/update_provider.dart';
@@ -22,25 +23,25 @@ class AboutScreen extends ConsumerWidget {
   Future<void> _checkForUpdates(BuildContext context, WidgetRef ref) async {
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('正在检查更新...')));
+    ).showSnackBar(const SnackBar(content: Text('正在检查并下载更新...')));
 
     try {
-      final info = await ref
+      final job = await ref
           .read(updateProvider.notifier)
-          .checkForUpdate(includeSkipped: true);
+          .checkAndDownloadUpdate(includeSkipped: true);
       if (!context.mounted) return;
-      if (info == null) {
+      if (job == null) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('当前已是最新版')));
         return;
       }
-      await showUpdatePromptDialog(context: context, info: info);
+      await showUpdatePromptDialog(context: context, job: job);
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('检查更新失败：$error')));
+      ).showSnackBar(SnackBar(content: Text('检查或下载更新失败：$error')));
     }
   }
 

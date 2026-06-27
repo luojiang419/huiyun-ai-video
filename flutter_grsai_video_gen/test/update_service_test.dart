@@ -51,6 +51,38 @@ void main() {
     expect(info!.version, 'V6.9');
   });
 
+  test(
+    'checks latest manifest from server when json contains utf8 bom',
+    () async {
+      final bytes = utf8.encode('installer-body');
+      final hash = sha256.convert(bytes).toString().toUpperCase();
+      final server = await _serve((request) async {
+        if (request.uri.path == '/update.json') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            '\uFEFF${jsonEncode({'version': 'V6.9', 'installerName': '影视版-安装包-V6.9.exe', 'installerUrl': 'http://127.0.0.1:${request.connectionInfo!.localPort}/installer.exe', 'sha256': hash, 'size': bytes.length, 'publishedAt': '2026-06-14T00:00:00Z', 'releaseNotes': '测试发布', 'mandatory': false})}',
+          );
+        } else {
+          request.response.statusCode = HttpStatus.notFound;
+        }
+        await request.response.close();
+      });
+      addTearDown(() => server.close(force: true));
+
+      final tempDir = await Directory.systemTemp.createTemp('update_service_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final service = UpdateService(
+        updateJsonUrl: 'http://127.0.0.1:${server.port}/update.json',
+        appDirectory: tempDir.path,
+      );
+
+      final info = await service.checkForUpdate(currentVersion: 'V6.8');
+      expect(info, isNotNull);
+      expect(info!.version, 'V6.9');
+    },
+  );
+
   test('throws when installer hash does not match', () async {
     final bytes = utf8.encode('installer-body');
     final server = await _serve((request) async {

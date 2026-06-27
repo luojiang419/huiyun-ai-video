@@ -1,20 +1,23 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_grsai_video_gen/models/update_info.dart';
 import 'package:flutter_grsai_video_gen/providers/update_provider.dart';
-import 'package:flutter_grsai_video_gen/screens/about_screen.dart';
 import 'package:flutter_grsai_video_gen/services/update_service.dart';
+import 'package:flutter_grsai_video_gen/models/pending_update_job.dart';
 
 class _NoopUpdateService extends UpdateService {
-  _NoopUpdateService() : super(updateJsonUrl: 'http://127.0.0.1');
+  _NoopUpdateService({required String appDirectory})
+    : super(updateJsonUrl: 'http://127.0.0.1', appDirectory: appDirectory);
 
   int checkCount = 0;
 
   @override
-  Future<UpdateInfo?> checkForUpdate({
+  Future<PendingUpdateJob?> downloadLatestUpdateIfNeeded({
     required String currentVersion,
     bool includeSkipped = false,
+    bool promptOnNextLaunch = false,
+    void Function(int received, int total)? onReceiveProgress,
   }) async {
     checkCount++;
     return null;
@@ -22,20 +25,22 @@ class _NoopUpdateService extends UpdateService {
 }
 
 void main() {
-  testWidgets('about screen can manually check updates', (tester) async {
-    final service = _NoopUpdateService();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [updateServiceProvider.overrideWithValue(service)],
-        child: const MaterialApp(home: Scaffold(body: AboutScreen())),
-      ),
+  test('about screen manual check uses shared update flow', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'about-update-button-test-',
     );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final service = _NoopUpdateService(appDirectory: tempDir.path);
+    final container = ProviderContainer(
+      overrides: [updateServiceProvider.overrideWithValue(service)],
+    );
+    addTearDown(container.dispose);
 
-    await tester.tap(find.text('检查更新'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    final job = await container
+        .read(updateProvider.notifier)
+        .checkAndDownloadUpdate(includeSkipped: true);
 
+    expect(job, isNull);
     expect(service.checkCount, 1);
   });
 }

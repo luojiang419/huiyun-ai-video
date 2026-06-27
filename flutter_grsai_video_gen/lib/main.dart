@@ -6,9 +6,16 @@ import 'constants/app_version.dart';
 import 'screens/home_screen.dart';
 import 'services/file_service.dart';
 import 'services/config_file_service.dart';
+import 'services/update_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final shouldExitForScheduledUpdate = await UpdateService()
+      .tryApplyScheduledUpdateOnStartup(currentVersion: appReleaseVersion);
+  if (shouldExitForScheduledUpdate) {
+    return;
+  }
+
   MediaKit.ensureInitialized();
   await windowManager.ensureInitialized();
 
