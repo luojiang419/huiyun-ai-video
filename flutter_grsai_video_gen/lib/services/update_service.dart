@@ -48,7 +48,6 @@ class UpdateService {
   final String? _appDirectory;
   final UpdateProcessStarter _processStarter;
   final void Function(int exitCode) _exitHandler;
-  final int Function() _pidProvider;
   final String Function() _resolvedExecutableProvider;
   final bool Function() _isWindowsProvider;
 
@@ -62,7 +61,6 @@ class UpdateService {
     String? appDirectory,
     UpdateProcessStarter? processStarter,
     void Function(int exitCode)? exitHandler,
-    int Function()? pidProvider,
     String Function()? resolvedExecutableProvider,
     bool Function()? isWindowsProvider,
   }) : _providedDio = dio,
@@ -89,7 +87,6 @@ class UpdateService {
              );
            }),
        _exitHandler = exitHandler ?? exit,
-       _pidProvider = pidProvider ?? (() => pid),
        _resolvedExecutableProvider =
            resolvedExecutableProvider ?? (() => Platform.resolvedExecutable),
        _isWindowsProvider = isWindowsProvider ?? (() => Platform.isWindows);
@@ -545,7 +542,7 @@ class UpdateService {
 
   Future<void> launchSilentUpdateAndExit({PendingUpdateJob? job}) async {
     if (!_isWindowsProvider()) {
-      throw const UpdateException('当前仅支持 Windows 自更新');
+      throw const UpdateException('当前仅支持 Windows 安装包更新');
     }
 
     final pending = job ?? await loadPendingUpdate();
@@ -558,11 +555,9 @@ class UpdateService {
       throw UpdateException('安装包不存在: ${pending.installerPath}');
     }
 
-    await _ensureUpdateDirectories();
     final targetInstallDir = await _resolvePreferredInstallDirectory(
       executableName: path.basename(currentExecutablePath),
     );
-    await _ensureUpdateDirectoriesFor(targetInstallDir);
     final normalizedPending = pending.copyWith(
       status: PendingUpdateStatus.installing,
       installOnNextLaunch: false,
@@ -574,60 +569,33 @@ class UpdateService {
       normalizedPending,
       pendingFilePath: _pendingUpdateFilePathFor(targetInstallDir),
     );
-    UpdateInstallSession? session;
-    String? sessionFilePath;
+
     try {
-      session = await _prepareInstallSession(
-        normalizedPending,
-        targetInstallDir: targetInstallDir,
-      );
-      sessionFilePath = _installSessionFilePathFor(
-        targetInstallDir,
-        session.sessionId,
-      );
-      session = session.copyWith(status: UpdateInstallSessionStatus.launching);
-      await saveInstallSession(session, sessionFilePath: sessionFilePath);
+      if (!await verifySha256(
+        normalizedPending.installerPath,
+        normalizedPending.sha256,
+      )) {
+        throw const UpdateException('安装包校验失败，文件可能已损坏');
+      }
 
-      final args = [
-        '${UpdateInstallSessionLaunchArgs.sessionIdPrefix}${session.sessionId}',
-        '${UpdateInstallSessionLaunchArgs.sessionFilePathPrefix}$sessionFilePath',
-      ];
-
-      await _processStarter(
-        session.stagedExecutablePath,
-        args,
-        mode: ProcessStartMode.detached,
-        runInShell: false,
-      );
+      await _startInstallerPackage(normalizedPending.installerPath);
       await Future<void>.delayed(const Duration(milliseconds: 500));
       _exitHandler(0);
     } catch (error) {
+      final reason = error is UpdateException
+          ? error.message
+          : '启动安装包失败: $error';
       final failed = normalizedPending.copyWith(
         status: PendingUpdateStatus.failed,
         promptOnNextLaunch: true,
-        lastFailureReason: '启动独立更新安装器失败: $error',
+        lastFailureReason: reason,
       );
       await savePendingUpdate(failed);
       await _markPendingUpdateFailed(
         _pendingUpdateFilePathFor(targetInstallDir),
         failed.lastFailureReason,
       );
-      if (session != null && sessionFilePath != null) {
-        final failedSession = session.copyWith(
-          status: UpdateInstallSessionStatus.failed,
-          lastError: error.toString(),
-        );
-        await saveInstallSession(
-          failedSession,
-          sessionFilePath: sessionFilePath,
-        );
-        await _writeSessionResult(
-          failedSession,
-          status: 'failed',
-          message: error.toString(),
-        );
-      }
-      throw UpdateException('启动独立更新安装器失败: $error', error);
+      throw UpdateException(reason, error);
     }
   }
 
@@ -658,58 +626,6 @@ class UpdateService {
     await _ensureUpdateDirectoriesFor(appDirectory);
   }
 
-  Future<UpdateInstallSession> _prepareInstallSession(
-    PendingUpdateJob pending, {
-    required String targetInstallDir,
-  }) async {
-    final sessionId = _buildUpdateSessionId();
-    final targetUpdatesRoot = _updatesRootDirectoryPathFor(targetInstallDir);
-    final stagedRuntimeDir = path.join(
-      path.join(targetUpdatesRoot, 'staging'),
-      sessionId,
-      'runtime',
-    );
-    await _copyUpdaterRuntime(stagedRuntimeDir);
-
-    final executableName = path.basename(currentExecutablePath);
-    final stagedExecutablePath = path.join(stagedRuntimeDir, executableName);
-    if (!await File(stagedExecutablePath).exists()) {
-      throw UpdateException('未能生成独立更新运行时: $stagedExecutablePath');
-    }
-
-    return UpdateInstallSession(
-      sessionId: sessionId,
-      targetVersion: pending.targetVersion,
-      installerPath: pending.installerPath,
-      installerSha256: pending.sha256,
-      installDir: targetInstallDir,
-      executableName: executableName,
-      targetExecutablePath: path.join(targetInstallDir, executableName),
-      stagedRuntimeDir: stagedRuntimeDir,
-      stagedExecutablePath: stagedExecutablePath,
-      pendingUpdateFilePath: _pendingUpdateFilePathFor(targetInstallDir),
-      sourcePendingUpdateFilePath: pendingUpdateFilePath,
-      resultFilePath: path.join(
-        _resultsDirectoryPathFor(targetInstallDir),
-        '$sessionId.json',
-      ),
-      ackFilePath: path.join(
-        _acksDirectoryPathFor(targetInstallDir),
-        '$sessionId.ack',
-      ),
-      logFilePath: path.join(
-        _logsDirectoryPathFor(targetInstallDir),
-        '$sessionId.log',
-      ),
-      createdAt: DateTime.now().toIso8601String(),
-      parentPid: _pidProvider(),
-    );
-  }
-
-  String _buildUpdateSessionId() {
-    return '${DateTime.now().millisecondsSinceEpoch}_${_pidProvider()}';
-  }
-
   List<String> _buildSilentInstallerArguments(String installDir) {
     return [
       '/VERYSILENT',
@@ -721,78 +637,26 @@ class UpdateService {
     ];
   }
 
-  Future<void> _copyUpdaterRuntime(String targetDirPath) async {
-    final sourceDir = Directory(appDirectory);
-    if (!await sourceDir.exists()) {
-      throw UpdateException('应用目录不存在: ${sourceDir.path}');
-    }
-
-    final targetDir = Directory(targetDirPath);
-    if (await targetDir.exists()) {
-      await targetDir.delete(recursive: true);
-    }
-    await targetDir.create(recursive: true);
-
-    await for (final entity in sourceDir.list(followLinks: false)) {
-      final name = path.basename(entity.path);
-      final targetPath = path.join(targetDirPath, name);
-      if (entity is File) {
-        await entity.copy(targetPath);
-        continue;
-      }
-      if (entity is Directory && name.toLowerCase() == 'data') {
-        await _copyEssentialRuntimeData(entity.path, targetPath);
-      }
-    }
+  Future<void> _startInstallerPackage(String installerPath) async {
+    final escapedInstallerPath = _escapePowerShellSingleQuotedString(
+      installerPath,
+    );
+    await _processStarter(
+      'powershell',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        "Start-Process -FilePath '$escapedInstallerPath'",
+      ],
+      mode: ProcessStartMode.detached,
+      runInShell: false,
+    );
   }
 
-  Future<void> _copyEssentialRuntimeData(
-    String sourceDataDirPath,
-    String targetDataDirPath,
-  ) async {
-    final sourceDataDir = Directory(sourceDataDirPath);
-    if (!await sourceDataDir.exists()) {
-      return;
-    }
-
-    await Directory(targetDataDirPath).create(recursive: true);
-    for (final fileName in const ['app.so', 'icudtl.dat']) {
-      final sourceFile = File(path.join(sourceDataDirPath, fileName));
-      if (await sourceFile.exists()) {
-        await sourceFile.copy(path.join(targetDataDirPath, fileName));
-      }
-    }
-
-    for (final dirName in const ['flutter_assets', 'Settings', 'Defaults']) {
-      final sourceDir = Directory(path.join(sourceDataDirPath, dirName));
-      if (await sourceDir.exists()) {
-        await _copyDirectoryRecursive(
-          sourceDir.path,
-          path.join(targetDataDirPath, dirName),
-        );
-      }
-    }
-  }
-
-  Future<void> _copyDirectoryRecursive(
-    String sourceDirPath,
-    String targetDirPath,
-  ) async {
-    final sourceDir = Directory(sourceDirPath);
-    if (!await sourceDir.exists()) {
-      return;
-    }
-
-    await Directory(targetDirPath).create(recursive: true);
-    await for (final entity in sourceDir.list(followLinks: false)) {
-      final name = path.basename(entity.path);
-      final targetPath = path.join(targetDirPath, name);
-      if (entity is File) {
-        await entity.copy(targetPath);
-      } else if (entity is Directory) {
-        await _copyDirectoryRecursive(entity.path, targetPath);
-      }
-    }
+  String _escapePowerShellSingleQuotedString(String value) {
+    return value.replaceAll("'", "''");
   }
 
   String _updatesRootDirectoryPathFor(String installDir) {

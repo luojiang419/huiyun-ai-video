@@ -169,7 +169,7 @@ class UpdateNotifier extends StateNotifier<UpdateState> {
       status: UpdateStatus.installing,
       pendingJob: pending,
       progress: 1,
-      message: '正在准备安装 ${pending.targetVersion}',
+      message: '正在启动安装包 ${pending.targetVersion}',
     );
     try {
       await _service.launchSilentUpdateAndExit(job: pending);

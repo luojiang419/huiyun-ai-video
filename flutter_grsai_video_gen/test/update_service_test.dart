@@ -138,7 +138,7 @@ void main() {
   });
 
   test(
-    'launchSilentUpdateAndExit stages runtime and launches detached updater session',
+    'launchSilentUpdateAndExit starts downloaded installer package and exits',
     () async {
       final tempDir = await Directory.systemTemp.createTemp('update_service_');
       addTearDown(() => tempDir.delete(recursive: true));
@@ -149,40 +149,6 @@ void main() {
         path.join(appDir.path, 'flutter_grsai_image_gen.exe'),
       );
       await exeFile.writeAsString('exe');
-      await File(
-        path.join(appDir.path, 'flutter_windows.dll'),
-      ).writeAsString('dll');
-      await File(
-        path.join(appDir.path, 'data', 'app.so'),
-      ).create(recursive: true);
-      await File(path.join(appDir.path, 'data', 'app.so')).writeAsString('app');
-      await File(
-        path.join(appDir.path, 'data', 'icudtl.dat'),
-      ).writeAsString('icu');
-      await File(
-        path.join(appDir.path, 'data', 'flutter_assets', 'AssetManifest.bin'),
-      ).create(recursive: true);
-      await File(
-        path.join(appDir.path, 'data', 'flutter_assets', 'AssetManifest.bin'),
-      ).writeAsString('manifest');
-      await File(
-        path.join(appDir.path, 'data', 'Settings', 'config.json'),
-      ).create(recursive: true);
-      await File(
-        path.join(appDir.path, 'data', 'Settings', 'config.json'),
-      ).writeAsString('{}');
-      await File(
-        path.join(appDir.path, 'data', 'Defaults', 'config.json'),
-      ).create(recursive: true);
-      await File(
-        path.join(appDir.path, 'data', 'Defaults', 'config.json'),
-      ).writeAsString('{}');
-      await File(
-        path.join(appDir.path, 'data', 'output', 'large.bin'),
-      ).create(recursive: true);
-      await File(
-        path.join(appDir.path, 'data', 'output', 'large.bin'),
-      ).writeAsString('skip');
 
       final installerFile = File(path.join(tempDir.path, 'installer.exe'));
       await installerFile.writeAsBytes(utf8.encode('installer-body'));
@@ -199,7 +165,6 @@ void main() {
       final service = UpdateService(
         appDirectory: appDir.path,
         resolvedExecutableProvider: () => exeFile.path,
-        pidProvider: () => 4321,
         isWindowsProvider: () => true,
         installedAppDirsLoader: () async => const [],
         exitHandler: (code) => exitCode = code,
@@ -232,63 +197,28 @@ void main() {
       await service.launchSilentUpdateAndExit(job: pendingJob);
 
       expect(exitCode, 0);
-      expect(launchedExecutable, isNotNull);
-      expect(launchedExecutable, contains('.system_update'));
+      expect(launchedExecutable, 'powershell');
       expect(launchedMode, ProcessStartMode.detached);
       expect(launchedRunInShell, isFalse);
       expect(launchedArguments, isNotNull);
-      expect(
-        launchedArguments!.any(
-          (value) => value.startsWith('--run-update-session='),
-        ),
-        isTrue,
-      );
-      final sessionFileArg = launchedArguments!.singleWhere(
-        (value) => value.startsWith('--update-session-file='),
-      );
-      final sessionFilePath = sessionFileArg.substring(
-        '--update-session-file='.length,
-      );
-      final sessionJson =
-          jsonDecode(await File(sessionFilePath).readAsString())
-              as Map<String, dynamic>;
+      final commandIndex = launchedArguments!.indexOf('-Command');
+      expect(commandIndex, greaterThanOrEqualTo(0));
+      final command = launchedArguments![commandIndex + 1];
+      expect(command, contains('Start-Process -FilePath'));
+      expect(command, contains(installerFile.path));
 
-      expect(sessionJson['targetVersion'], 'V6.9');
-      expect(
-        File(sessionJson['stagedExecutablePath'].toString()).existsSync(),
-        isTrue,
-      );
-      expect(
-        File(
-          path.join(
-            sessionJson['stagedRuntimeDir'].toString(),
-            'data',
-            'flutter_assets',
-            'AssetManifest.bin',
-          ),
-        ).existsSync(),
-        isTrue,
-      );
-      expect(
-        Directory(
-          path.join(
-            sessionJson['stagedRuntimeDir'].toString(),
-            'data',
-            'output',
-          ),
-        ).existsSync(),
-        isFalse,
-      );
-      expect(sessionJson['installDir'], appDir.path);
-      expect(
-        sessionJson['targetExecutablePath'],
-        path.join(appDir.path, 'flutter_grsai_image_gen.exe'),
-      );
+      final pendingJson =
+          jsonDecode(await File(service.pendingUpdateFilePath).readAsString())
+              as Map<String, dynamic>;
+      expect(pendingJson['targetVersion'], 'V6.9');
+      expect(pendingJson['installerPath'], installerFile.path);
+      expect(pendingJson['status'], PendingUpdateStatus.installing.value);
+      expect(Directory(service.stagingDirectoryPath).existsSync(), isFalse);
     },
   );
 
   test(
-    'launchSilentUpdateAndExit prefers formal install directory over workspace snapshot',
+    'launchSilentUpdateAndExit mirrors pending file to formal install directory',
     () async {
       final tempDir = await Directory.systemTemp.createTemp('update_service_');
       addTearDown(() => tempDir.delete(recursive: true));
@@ -301,46 +231,6 @@ void main() {
         path.join(snapshotAppDir.path, 'flutter_grsai_image_gen.exe'),
       );
       await snapshotExe.writeAsString('snapshot-exe');
-      await File(
-        path.join(snapshotAppDir.path, 'flutter_windows.dll'),
-      ).writeAsString('dll');
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'app.so'),
-      ).create(recursive: true);
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'app.so'),
-      ).writeAsString('app');
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'icudtl.dat'),
-      ).writeAsString('icu');
-      await File(
-        path.join(
-          snapshotAppDir.path,
-          'data',
-          'flutter_assets',
-          'AssetManifest.bin',
-        ),
-      ).create(recursive: true);
-      await File(
-        path.join(
-          snapshotAppDir.path,
-          'data',
-          'flutter_assets',
-          'AssetManifest.bin',
-        ),
-      ).writeAsString('manifest');
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'Settings', 'config.json'),
-      ).create(recursive: true);
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'Settings', 'config.json'),
-      ).writeAsString('{}');
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'Defaults', 'config.json'),
-      ).create(recursive: true);
-      await File(
-        path.join(snapshotAppDir.path, 'data', 'Defaults', 'config.json'),
-      ).writeAsString('{}');
 
       final formalInstallDir = Directory(
         path.join(tempDir.path, 'Program Files', 'VideoGen'),
@@ -356,12 +246,12 @@ void main() {
         installerFile.path,
       );
 
+      String? launchedExecutable;
       List<String>? launchedArguments;
 
       final service = UpdateService(
         appDirectory: snapshotAppDir.path,
         resolvedExecutableProvider: () => snapshotExe.path,
-        pidProvider: () => 4321,
         isWindowsProvider: () => true,
         installedAppDirsLoader: () async => [formalInstallDir.path],
         exitHandler: (_) {},
@@ -372,6 +262,7 @@ void main() {
               mode = ProcessStartMode.normal,
               runInShell = false,
             }) async {
+              launchedExecutable = executable;
               launchedArguments = List<String>.from(arguments);
               return Process.start('cmd.exe', const ['/c', 'exit', '0']);
             },
@@ -391,24 +282,11 @@ void main() {
 
       await service.launchSilentUpdateAndExit(job: pendingJob);
 
+      expect(launchedExecutable, 'powershell');
       expect(launchedArguments, isNotNull);
-      final sessionFileArg = launchedArguments!.singleWhere(
-        (value) => value.startsWith('--update-session-file='),
-      );
-      final sessionFilePath = sessionFileArg.substring(
-        '--update-session-file='.length,
-      );
-      final sessionJson =
-          jsonDecode(await File(sessionFilePath).readAsString())
-              as Map<String, dynamic>;
+      expect(launchedArguments!.join(' '), contains(installerFile.path));
 
-      expect(sessionJson['installDir'], formalInstallDir.path);
-      expect(
-        sessionJson['targetExecutablePath'],
-        path.join(formalInstallDir.path, 'flutter_grsai_image_gen.exe'),
-      );
-      expect(
-        sessionJson['pendingUpdateFilePath'],
+      final mirroredPendingFile = File(
         path.join(
           formalInstallDir.path,
           'data',
@@ -416,25 +294,39 @@ void main() {
           'pending_update.json',
         ),
       );
+      expect(mirroredPendingFile.existsSync(), isTrue);
+      final mirroredPendingJson =
+          jsonDecode(await mirroredPendingFile.readAsString())
+              as Map<String, dynamic>;
+      expect(mirroredPendingJson['targetVersion'], 'V9.0');
+      expect(mirroredPendingJson['installerPath'], installerFile.path);
       expect(
-        File(
-          path.join(
-            formalInstallDir.path,
-            'data',
-            '.system_update',
-            'pending_update.json',
-          ),
-        ).existsSync(),
-        isTrue,
+        mirroredPendingJson['status'],
+        PendingUpdateStatus.installing.value,
       );
-      expect(
-        sessionJson['sourcePendingUpdateFilePath'],
+      final snapshotPendingFile = File(
         path.join(
           snapshotAppDir.path,
           'data',
           '.system_update',
           'pending_update.json',
         ),
+      );
+      expect(snapshotPendingFile.existsSync(), isTrue);
+      final snapshotPendingJson =
+          jsonDecode(await snapshotPendingFile.readAsString())
+              as Map<String, dynamic>;
+      expect(snapshotPendingJson['targetVersion'], 'V9.0');
+      expect(snapshotPendingJson['installerPath'], installerFile.path);
+      expect(
+        snapshotPendingJson['status'],
+        PendingUpdateStatus.installing.value,
+      );
+      expect(
+        File(
+          path.join(formalInstallDir.path, 'data', '.system_update', 'jobs'),
+        ).existsSync(),
+        isFalse,
       );
     },
   );
