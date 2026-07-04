@@ -126,6 +126,50 @@ void main() {
     },
   );
 
+  test(
+    'Grsai gemini image models with references use unified urls API',
+    () async {
+      final service = ApiService();
+      final progresses = <GenerateProgress>[];
+
+      await for (final progress in service.generateImage(
+        apiUrl: apiUrl,
+        apiKey: 'test-key',
+        model: 'gemini-3-pro-image-preview',
+        prompt: 'use reference with default model',
+        aspectRatio: '16:9',
+        imageSize: '1K',
+        urls: [referenceFile.path],
+        uploadMethod: Settings.uploadMethodBase64,
+      )) {
+        progresses.add(progress);
+      }
+
+      expect(submittedBody, isNotNull);
+      expect(submittedBody!['model'], 'gemini-3-pro-image-preview');
+      expect(submittedBody!['urls'], isA<List>());
+      expect(submittedBody!['urls'], isNotEmpty);
+      expect(
+        (submittedBody!['urls'] as List).single,
+        startsWith('data:image/'),
+      );
+
+      final succeeded = progresses.last;
+      expect(succeeded.status, 'succeeded');
+      expect(succeeded.results, hasLength(1));
+
+      final appDir = File(Platform.resolvedExecutable).parent;
+      final savedFile = File(path.join(appDir.path, succeeded.results!.single));
+      final metaFile = File('${savedFile.path}.json');
+
+      expect(await savedFile.exists(), isTrue);
+      expect(await metaFile.exists(), isTrue);
+
+      await metaFile.delete();
+      await savedFile.delete();
+    },
+  );
+
   test('Grsai unified image API keeps detailed failure message', () async {
     final service = ApiService();
     final progresses = <GenerateProgress>[];

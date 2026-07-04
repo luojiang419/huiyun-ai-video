@@ -1,10 +1,17 @@
 #define MyAppName "绘云AI 影视版"
-#define MyAppVersion "V8.9"
+#ifndef MyAppVersion
+  #define MyAppVersion "V9.2"
+#endif
 #define MyAppPublisher "Leo.j"
 #define MyAppExeName "flutter_grsai_image_gen.exe"
 #define MyAppId "HuiYunAI.Video"
 #define MyAppLegacyIdPrefix "HuiYunAI.Video"
-#define MyAppOutputBaseFilename "影视版-安装包-V8.9"
+#ifndef MyAppOutputBaseFilename
+  #define MyAppOutputBaseFilename "影视版-安装包-" + MyAppVersion
+#endif
+#ifndef MyAppOutputDir
+  #define MyAppOutputDir "..\..\dist\影视版\影视版-" + MyAppVersion
+#endif
 
 [Setup]
 AppId={#MyAppId}
@@ -15,7 +22,7 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={code:GetDefaultInstallDir}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-OutputDir=..\..\dist\影视版\影视版-V8.9
+OutputDir={#MyAppOutputDir}
 OutputBaseFilename={#MyAppOutputBaseFilename}
 Compression=lzma
 SolidCompression=yes

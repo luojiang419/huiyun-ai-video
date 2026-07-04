@@ -1223,6 +1223,23 @@ class ApiService {
     Map<String, dynamic> body;
     String endpoint;
 
+    if (_isGeminiModel(model) &&
+        _isGrsaiImageApi(apiUrl) &&
+        normalizedUrls.isNotEmpty) {
+      yield* _generateViaGrsaiUnifiedImageApi(
+        apiUrl: apiUrl,
+        apiKey: apiKey,
+        model: model,
+        prompt: prompt,
+        aspectRatio: aspectRatio,
+        imageSize: imageSize,
+        imageQuality: imageQuality,
+        urls: normalizedUrls,
+        outputFolder: outputFolder,
+      );
+      return;
+    }
+
     // Gemini API 通道（诗影代理）
     if (_isGeminiModel(model)) {
       endpoint = apiUrl.endsWith('/')
