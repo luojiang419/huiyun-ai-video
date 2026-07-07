@@ -681,7 +681,10 @@ class UpdateService {
       r'}',
       r'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
     ];
-    await File(scriptPath).writeAsString(scriptLines.join('\r\n'), flush: true);
+    await File(scriptPath).writeAsBytes(
+      utf8.encode('\uFEFF${scriptLines.join('\r\n')}'),
+      flush: true,
+    );
 
     await _processStarter(
       'powershell.exe',

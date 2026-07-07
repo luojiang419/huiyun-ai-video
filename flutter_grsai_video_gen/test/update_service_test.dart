@@ -207,6 +207,7 @@ void main() {
       final scriptPath = launchedArguments![fileIndex + 1];
       final scriptFile = File(scriptPath);
       expect(scriptFile.existsSync(), isTrue);
+      await _expectUtf8Bom(scriptFile);
       final script = await scriptFile.readAsString();
       expect(script, contains(installerFile.path));
       expect(script, contains(appDir.path));
@@ -296,6 +297,7 @@ void main() {
       final scriptPath = launchedArguments![fileIndex + 1];
       final scriptFile = File(scriptPath);
       expect(scriptFile.existsSync(), isTrue);
+      await _expectUtf8Bom(scriptFile);
       final script = await scriptFile.readAsString();
       expect(script, contains(installerFile.path));
       expect(script, contains(formalInstallDir.path));
@@ -557,6 +559,11 @@ void main() {
       expect(File(service.pendingUpdateFilePath).existsSync(), isFalse);
     },
   );
+}
+
+Future<void> _expectUtf8Bom(File file) async {
+  final bytes = await file.openRead(0, 3).first;
+  expect(bytes, [0xEF, 0xBB, 0xBF]);
 }
 
 Future<HttpServer> _serve(Future<void> Function(HttpRequest) handler) async {

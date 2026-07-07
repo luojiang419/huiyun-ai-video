@@ -115,8 +115,9 @@ if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) {
 }
 
 $versionDir = Join-Path $workspaceRoot "dist\影视版\影视版-$Version"
-$installerName = "影视版-安装包-$Version.exe"
-$installerPath = Join-Path $versionDir $installerName
+$localInstallerName = "影视版-安装包-$Version.exe"
+$installerName = "HuiYunAI-VideoGen-Setup-$Version.exe"
+$installerPath = Join-Path $versionDir $localInstallerName
 
 if (-not (Test-Path -LiteralPath $installerPath)) {
   throw "安装包不存在：$installerPath"
@@ -156,7 +157,7 @@ Assert-LastExitCode "读取 Release 信息失败：$Version"
 
 Remove-ReleaseAssetIfExists `
   -Release $release `
-  -Names @($installerName, "update.json", "-.-$Version.exe")
+  -Names @($installerName, $localInstallerName, "update.json", "-.-$Version.exe")
 
 $token = Get-GitHubToken
 $installerAsset = Upload-ReleaseAsset `
