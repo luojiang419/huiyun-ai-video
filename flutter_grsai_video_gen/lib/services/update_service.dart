@@ -578,7 +578,10 @@ class UpdateService {
         throw const UpdateException('安装包校验失败，文件可能已损坏');
       }
 
-      await _startInstallerPackage(normalizedPending.installerPath);
+      await _startInstallerPackage(
+        installerPath: normalizedPending.installerPath,
+        installDir: targetInstallDir,
+      );
       await Future<void>.delayed(const Duration(milliseconds: 500));
       _exitHandler(0);
     } catch (error) {
@@ -637,22 +640,67 @@ class UpdateService {
     ];
   }
 
-  Future<void> _startInstallerPackage(String installerPath) async {
-    final escapedInstallerPath = _escapePowerShellSingleQuotedString(
-      installerPath,
-    );
+  Future<void> _startInstallerPackage({
+    required String installerPath,
+    required String installDir,
+  }) async {
+    final logDir = _logsDirectoryPathFor(installDir);
+    final scriptPath = path.join(logDir, 'launch-installer.ps1');
+    final launcherLogPath = path.join(logDir, 'installer-launch.log');
+    final installerLogPath = path.join(logDir, 'installer-package.log');
+    await Directory(logDir).create(recursive: true);
+
+    final scriptLines = <String>[
+      r"$ErrorActionPreference = 'Stop'",
+      '\$pidToWait = $pid',
+      '\$installerPath = ${_toPowerShellSingleQuotedLiteral(installerPath)}',
+      '\$installDir = ${_toPowerShellSingleQuotedLiteral(installDir)}',
+      '\$logPath = ${_toPowerShellSingleQuotedLiteral(launcherLogPath)}',
+      '\$installerUiLogPath = ${_toPowerShellSingleQuotedLiteral(installerLogPath)}',
+      r'function Write-UpdateLog([string]$message) {',
+      r"  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'",
+      r"  Add-Content -LiteralPath $logPath -Value ($timestamp + ' ' + $message) -Encoding UTF8",
+      r'}',
+      r'Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue',
+      r'try {',
+      r"  Write-UpdateLog 'update launcher started'",
+      r"  Write-UpdateLog ('waiting old process, pid=' + $pidToWait)",
+      r'  while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }',
+      r'  Start-Sleep -Milliseconds 800',
+      r"  if (-not (Test-Path -LiteralPath $installerPath)) { throw ('installer not found: ' + $installerPath) }",
+      r"  Write-UpdateLog ('starting installer: ' + $installerPath)",
+      "  \$installerDirArg = '/DIR=\"' + \$installDir + '\"'",
+      "  \$installerLogArg = '/LOG=\"' + \$installerUiLogPath + '\"'",
+      r'  $installerArgs = @($installerDirArg, $installerLogArg)',
+      r'  $process = Start-Process -FilePath $installerPath -ArgumentList $installerArgs -Verb RunAs -Wait -PassThru',
+      r"  Write-UpdateLog ('installer finished, exitCode=' + $process.ExitCode)",
+      "  if (\$process.ExitCode -ne 0) { throw ('installer exit code: ' + \$process.ExitCode) }",
+      r"  Write-UpdateLog 'installer completed'",
+      r'} catch {',
+      r"  Write-UpdateLog ('update launcher failed: ' + $_.Exception.Message)",
+      r'}',
+      r'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
+    ];
+    await File(scriptPath).writeAsString(scriptLines.join('\r\n'), flush: true);
+
     await _processStarter(
-      'powershell',
+      'powershell.exe',
       [
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
-        '-Command',
-        "Start-Process -FilePath '$escapedInstallerPath'",
+        '-WindowStyle',
+        'Hidden',
+        '-File',
+        scriptPath,
       ],
       mode: ProcessStartMode.detached,
       runInShell: false,
     );
+  }
+
+  String _toPowerShellSingleQuotedLiteral(String value) {
+    return "'${_escapePowerShellSingleQuotedString(value)}'";
   }
 
   String _escapePowerShellSingleQuotedString(String value) {

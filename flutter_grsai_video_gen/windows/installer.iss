@@ -1,6 +1,6 @@
 #define MyAppName "绘云AI 影视版"
 #ifndef MyAppVersion
-  #define MyAppVersion "V9.4"
+  #define MyAppVersion "V9.5"
 #endif
 #define MyAppPublisher "Leo.j"
 #define MyAppExeName "flutter_grsai_image_gen.exe"
@@ -32,7 +32,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UsePreviousAppDir=no
-CloseApplications=yes
+SetupLogging=yes
+CloseApplications=no
 RestartApplications=no
 
 [Languages]
@@ -252,4 +253,80 @@ begin
     Result := ExpandConstant('{autopf}\VideoGen');
     Log('未检测到 D 盘，回退到系统 Program Files 目录: ' + Result);
   end;
+end;
+
+function IsMainAppRunning(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec(
+    ExpandConstant('{cmd}'),
+    '/C tasklist /FI "IMAGENAME eq {#MyAppExeName}" /NH | find /I "{#MyAppExeName}" >NUL 2>NUL',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode
+  );
+  Result := ResultCode = 0;
+end;
+
+function StopMainAppProcesses(const Phase: String): Boolean;
+var
+  Attempt: Integer;
+  ResultCode: Integer;
+begin
+  Result := True;
+
+  if not IsMainAppRunning() then
+    Exit;
+
+  Log('{#MyAppExeName} process detected during ' + Phase + '; forcing shutdown before installation continues.');
+
+  for Attempt := 1 to 3 do
+  begin
+    Exec(
+      ExpandConstant('{sys}\taskkill.exe'),
+      '/F /T /IM {#MyAppExeName}',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode
+    );
+    Sleep(500);
+
+    if not IsMainAppRunning() then
+      Exit;
+  end;
+
+  MsgBox(
+    '检测到旧版绘云AI仍在运行，安装程序无法自动结束进程。请手动退出绘云AI后重新运行安装包。',
+    mbError,
+    MB_OK
+  );
+  Result := False;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := StopMainAppProcesses('setup initialization');
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if not StopMainAppProcesses('file installation') then
+    Result := '旧版绘云AI进程仍在运行，安装已取消。';
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+
+  if CurPageID = wpReady then
+    Result := StopMainAppProcesses('ready page');
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := StopMainAppProcesses('uninstall initialization');
 end;

@@ -197,15 +197,22 @@ void main() {
       await service.launchSilentUpdateAndExit(job: pendingJob);
 
       expect(exitCode, 0);
-      expect(launchedExecutable, 'powershell');
+      expect(launchedExecutable, 'powershell.exe');
       expect(launchedMode, ProcessStartMode.detached);
       expect(launchedRunInShell, isFalse);
       expect(launchedArguments, isNotNull);
-      final commandIndex = launchedArguments!.indexOf('-Command');
-      expect(commandIndex, greaterThanOrEqualTo(0));
-      final command = launchedArguments![commandIndex + 1];
-      expect(command, contains('Start-Process -FilePath'));
-      expect(command, contains(installerFile.path));
+      final fileIndex = launchedArguments!.indexOf('-File');
+      expect(fileIndex, greaterThanOrEqualTo(0));
+      expect(launchedArguments, contains('Hidden'));
+      final scriptPath = launchedArguments![fileIndex + 1];
+      final scriptFile = File(scriptPath);
+      expect(scriptFile.existsSync(), isTrue);
+      final script = await scriptFile.readAsString();
+      expect(script, contains(installerFile.path));
+      expect(script, contains(appDir.path));
+      expect(script, contains('Start-Process -FilePath'));
+      expect(script, contains('-Verb RunAs'));
+      expect(script, contains(r'$installerDirArg'));
 
       final pendingJson =
           jsonDecode(await File(service.pendingUpdateFilePath).readAsString())
@@ -282,9 +289,18 @@ void main() {
 
       await service.launchSilentUpdateAndExit(job: pendingJob);
 
-      expect(launchedExecutable, 'powershell');
+      expect(launchedExecutable, 'powershell.exe');
       expect(launchedArguments, isNotNull);
-      expect(launchedArguments!.join(' '), contains(installerFile.path));
+      final fileIndex = launchedArguments!.indexOf('-File');
+      expect(fileIndex, greaterThanOrEqualTo(0));
+      final scriptPath = launchedArguments![fileIndex + 1];
+      final scriptFile = File(scriptPath);
+      expect(scriptFile.existsSync(), isTrue);
+      final script = await scriptFile.readAsString();
+      expect(script, contains(installerFile.path));
+      expect(script, contains(formalInstallDir.path));
+      expect(script, contains('Start-Process -FilePath'));
+      expect(script, contains('-Verb RunAs'));
 
       final mirroredPendingFile = File(
         path.join(
