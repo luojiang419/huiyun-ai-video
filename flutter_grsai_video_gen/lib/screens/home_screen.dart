@@ -92,7 +92,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               });
             },
           ),
-          if (_selectedIndex == 1)
+          if (_selectedIndex == 0)
             ReferenceSidebar(
               promptController: _promptController,
               onRepaintGenerate:
@@ -138,11 +138,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: IndexedStack(
               index: _selectedIndex,
               children: [
-                const FilmWorkshopWrapper(),
                 GenerateScreen(
                   promptController: _promptController,
-                  dropEnabled: _selectedIndex == 1,
+                  dropEnabled: _selectedIndex == 0,
                 ),
+                const FilmWorkshopWrapper(),
                 const VideoGenerateScreen(),
                 AssetLibraryScreen(dropEnabled: _selectedIndex == 3),
                 const StoryboardGalleryScreen(),

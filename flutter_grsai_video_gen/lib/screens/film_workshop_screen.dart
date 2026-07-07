@@ -4638,7 +4638,7 @@ class _FilmWorkshopScreenState extends ConsumerState<FilmWorkshopScreen> {
                             id: bgTaskId!,
                             title: '通读全文',
                             description: '正在阅读理解剧本...',
-                            targetPageIndex: 0, // 影视工坊
+                            targetPageIndex: 1, // 影视工坊
                           ),
                         );
                     isMinimized = true;
@@ -6994,7 +6994,7 @@ class _MatchingProgressDialogState
               title: '匹配资产到分镜头',
               description: '${_currentIndex + 1}/${widget.shots.length}',
               progress: _currentIndex / widget.shots.length,
-              targetPageIndex: 0, // 影视工坊页面索引
+              targetPageIndex: 1, // 影视工坊页面索引
             ),
           );
     }

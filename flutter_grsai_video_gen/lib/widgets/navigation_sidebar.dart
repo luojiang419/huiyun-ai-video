@@ -43,8 +43,8 @@ class _NavigationSidebarState extends ConsumerState<NavigationSidebar> {
       child: Column(
         children: [
           _buildToggleButton(),
-          _buildNavItem(0, '🎨', '影视工坊'),
-          _buildNavItem(1, '🖼️', '图片生成'),
+          _buildNavItem(0, '🖼️', '图片生成'),
+          _buildNavItem(1, '🎨', '影视工坊'),
           _buildNavItem(2, '🎬', '视频生成'),
           _buildNavItem(3, '📦', '影视资产库'),
           _buildNavItem(4, '🖼️', '分镜图管理'),
