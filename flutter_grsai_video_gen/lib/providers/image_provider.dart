@@ -2,9 +2,11 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 import '../models/uploaded_image.dart';
 import '../services/storage_service.dart';
+import '../utils/reference_image_file_name.dart';
 
 final storageServiceProvider = Provider((ref) => StorageService());
 
@@ -20,8 +22,15 @@ final selectedImagesProvider =
 
 class UploadedImagesNotifier extends StateNotifier<List<UploadedImage>> {
   final StorageService _storage;
+  final String Function() _appDirectoryProvider;
 
-  UploadedImagesNotifier(this._storage) : super([]) {
+  UploadedImagesNotifier(
+    this._storage, {
+    String Function()? appDirectoryProvider,
+  }) : _appDirectoryProvider =
+           appDirectoryProvider ??
+           (() => File(Platform.resolvedExecutable).parent.path),
+       super([]) {
     _loadImages();
   }
 
@@ -57,8 +66,7 @@ class UploadedImagesNotifier extends StateNotifier<List<UploadedImage>> {
     final img = state.firstWhere((img) => img.id == id);
     // 只删除 data/input 目录下的副本，不删除其他位置的原始文件
     final file = File(img.path);
-    if (file.existsSync() &&
-        img.path.contains('data${Platform.pathSeparator}input')) {
+    if (file.existsSync() && _isManagedInputPath(img.path)) {
       file.deleteSync();
     }
     state = state.where((img) => img.id != id).toList();
@@ -69,8 +77,7 @@ class UploadedImagesNotifier extends StateNotifier<List<UploadedImage>> {
     for (var img in state) {
       // 只删除 data/input 目录下的副本
       final file = File(img.path);
-      if (file.existsSync() &&
-          img.path.contains('data${Platform.pathSeparator}input')) {
+      if (file.existsSync() && _isManagedInputPath(img.path)) {
         file.deleteSync();
       }
     }
@@ -86,26 +93,24 @@ class UploadedImagesNotifier extends StateNotifier<List<UploadedImage>> {
     );
 
     if (result != null) {
-      final exePath = Platform.resolvedExecutable;
-      final appDir = File(exePath).parent.path;
+      final appDir = _appDirectoryProvider();
       final inputDir = Directory('$appDir/data/input');
       await inputDir.create(recursive: true);
 
       for (var file in result.files) {
         if (file.path != null) {
-          final fileName = file.path!.split(Platform.pathSeparator).last;
-
-          if (state.any((img) => img.name == fileName)) {
-            continue;
-          }
-
           final fileBytes = await File(file.path!).readAsBytes();
-          final targetPath = '${inputDir.path}/$fileName';
-          await File(file.path!).copy(targetPath);
+          final originalFileName = displayFileNameFromPath(file.path!);
+          final targetFileName = buildReferenceCopyFileName(
+            originalFileName,
+            DateTime.now().millisecondsSinceEpoch,
+          );
+          final targetPath = path.join(inputDir.path, targetFileName);
+          await File(targetPath).writeAsBytes(fileBytes);
 
           final image = UploadedImage(
             id: const Uuid().v4(),
-            name: fileName,
+            name: targetFileName,
             path: targetPath,
             base64: base64Encode(fileBytes),
             bytes: fileBytes,
@@ -116,6 +121,13 @@ class UploadedImagesNotifier extends StateNotifier<List<UploadedImage>> {
       }
     }
     return addedImages;
+  }
+
+  bool _isManagedInputPath(String imagePath) {
+    final normalized = path.normalize(imagePath).toLowerCase();
+    final marker =
+        '${path.separator}data${path.separator}input${path.separator}';
+    return normalized.contains(marker);
   }
 }
 

@@ -10,6 +10,7 @@ class SkillService {
   static const String _builtinDir = '$_skillsDir/builtin';
   static const String _userDir = '$_skillsDir/user';
   static const String _indexFile = '$_skillsDir/index.json';
+  static const String _defaultImageModel = 'nano-banana-fast';
 
   String _appDir = '';
 
@@ -381,7 +382,7 @@ class SkillService {
             '二、景别体系\n- 大远景（Extreme Long Shot）：交代环境全貌\n- 远景（Long Shot）：展示人物全身和环境关系\n- 全景（Full Shot）：人物全身入画\n- 中景（Medium Shot）：腰部以上，对话场景常用\n- 近景（Medium Close-up）：胸部以上\n- 特写（Close-up）：面部或物体细节，强调情绪\n- 大特写（Extreme Close-up）：局部细节\n\n'
             '三、镜头运动描述词\n- 缓慢推进（Slow Push In）：逐渐靠近主体，制造紧张感\n- 拉远（Pull Back）：逐渐远离，展示环境全貌\n- 横摇（Pan）：镜头水平转动\n- 环绕（Orbit）：镜头围绕主体旋转\n- 跟随（Tracking）：镜头跟随移动的主体',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
           'batchCount': 1,
@@ -431,7 +432,7 @@ class SkillService {
             '二、光源类型描述词\n- 自然窗光（Window Light）：柔和的方向性光线\n- 黄金时刻（Golden Hour）：日出日落前后的暖色光，色温约3000-4000K\n- 蓝色时刻（Blue Hour）：日落后的冷色光线，色温约7000-10000K\n- 影棚闪光灯（Studio Strobe）：干净利落的光线\n- 霓虹灯光（Neon Light）：彩色霓虹灯照射\n\n'
             '三、肤色与质感描述词\n- 健康光泽的肤色，细腻自然\n- 精致的妆面质感，哑光底妆\n- 电影级皮肤处理，保留纹理细节\n- 高端时尚杂志质感，无暇肌肤',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '4:3',
           'imageSize': '2K',
           'batchCount': 1,
@@ -481,7 +482,7 @@ class SkillService {
             '二、天气氛围描述词\n- 薄雾：朦胧柔美，景物若隐若现\n- 暴风雨：乌云密布，闪电划空，极具戏剧性\n- 雨后：清新通透，彩虹出现\n- 雪景：银装素裹，宁静纯净\n- 云海：站在高处俯瞰云层翻涌\n\n'
             '三、风光构图技法\n- 前景引导：利用前景元素引导视线\n- 层次递进：前景清晰→中景柔和→远景朦胧\n- 汇聚线：利用道路、河流引向远方焦点\n- 倒影构图：平静水面形成完美镜像',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
           'batchCount': 1,
@@ -514,7 +515,7 @@ class SkillService {
             '二、背景与场景\n- 纯色背景：白底/黑底/灰底\n- 渐变背景：柔和颜色渐变\n- 场景化拍摄：产品融入使用场景\n- 悬浮效果：产品悬浮于空中\n\n'
             '三、质感表现\n- 金属：冷调光线+高对比\n- 玻璃：侧逆光+暗背景\n- 皮革：暖调侧光+近距离\n- 织物：柔和光线+微距\n- 食品：暖色侧光+蒸汽效果',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '1:1',
           'imageSize': '2K',
         },
@@ -549,7 +550,7 @@ class SkillService {
             '二、概念艺术风格\n- 写实概念：照片级真实感\n- 半写实概念：保留绘画笔触感\n- 手绘概念：明显绘画风格\n- 极简概念：大面积留白\n\n'
             '三、概念设计常用构图\n- 环境全景：展示完整场景全貌\n- 角色展示：展示服装和装备\n- 氛围图：以色块和光影为主的情绪参考',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -576,7 +577,7 @@ class SkillService {
             '二、科幻色调体系\n- 赛博朋克：品红+青蓝+暗紫，高对比霓虹\n- 太空歌剧：深蓝+金色+白色，宏大壮阔\n- 废土末日：土黄+铁锈红+灰色，荒凉破败\n- 科技洁净：纯白+银色+淡蓝，极简未来\n\n'
             '三、科幻氛围描述词\n- 空中穿梭的光轨列车在摩天大楼间划出流光溢彩的弧线\n- 全息广告牌在雨幕中闪烁，倒映在湿漉漉的路面上\n- 巨型能量塔顶端的蓝色脉冲照亮了整个城市的夜空',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -617,7 +618,7 @@ class SkillService {
             '二、传统色彩体系\n- 宫廷色：朱红、明黄、翠绿、靛蓝\n- 文人色：水墨灰、淡青、米白、赭石\n- 民间色：大红、翠绿、金黄、靛蓝\n\n'
             '三、古风氛围描述词\n- 晨雾中若隐若现的亭台楼阁\n- 月光下的竹林小径，斑驳的光影\n- 烟雨江南的水乡古镇',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -643,7 +644,7 @@ class SkillService {
             '一、动感表现技法\n- 动态模糊：背景运动模糊，主体相对清晰\n- 速度线：沿运动方向的线条暗示速度\n- 冻结瞬间：高速快门冻结动作高潮\n- 残影效果：多重曝光暗示快速移动\n\n'
             '二、冲击感构图\n- 对角线构图：制造不稳定感和冲击力\n- 低角度仰拍：增强力量感和压迫感\n- 广角畸变：夸张的透视增强冲击\n- 碎片飞溅：环境中碎片飞散增强冲击感',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -670,7 +671,7 @@ class SkillService {
             '二、摆盘构图\n- 俯拍（Flat Lay）：展示完整摆盘\n- 45度角：最接近人眼视角，亲切自然\n- 特写：突出食材细节和质感\n\n'
             '三、食欲色彩\n- 暖色调为主，红、橙、黄色激发食欲\n- 新鲜食材的饱和色彩\n- 酱汁的光泽和流动感',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '4:3',
           'imageSize': '2K',
         },
@@ -696,7 +697,7 @@ class SkillService {
             '一、建筑摄影技法\n- 透视校正：垂直线条保持平行\n- 对称构图：展示建筑的秩序美\n- 引导线：利用建筑线条引导视线\n- 框架构图：利用门窗形成画中画\n\n'
             '二、最佳拍摄时段\n- 蓝调时刻：天空深蓝与建筑暖灯对比\n- 黄金时刻：建筑镀上温暖的金色\n- 夜景：灯光勾勒建筑轮廓',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -722,7 +723,7 @@ class SkillService {
             '一、时尚摄影布光\n- 高对比硬光：突出服装剪裁和质感\n- 美人光：柔和均匀的蝴蝶光\n- 彩色凝胶光：创造前卫色彩效果\n\n'
             '二、杂志构图\n- 留白构图：大面积留白突出模特\n- 对角线姿态：增加画面动感\n- 裁切构图：大胆裁切增加时尚感',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '3:4',
           'imageSize': '2K',
         },
@@ -748,7 +749,7 @@ class SkillService {
             '一、恐怖氛围布光\n- 低调照明：大量暗部，只有关键区域被照亮\n- 底光：从下方照射，制造不自然的阴影\n- 单点光源：孤立的光源制造孤独感\n\n'
             '二、恐怖构图\n- 大量负空间：空旷的黑暗增加不安感\n- 不完整构图：只展示部分暗示整体\n- 诡异对称：过于完美的对称制造不安',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -774,7 +775,7 @@ class SkillService {
             '一、战争氛围元素\n- 烟雾和灰尘：弥漫在战场上的硝烟\n- 爆炸和火焰：橘红色的爆炸火球\n- 弹痕和碎片：环境破坏的细节\n- 军事装备：坦克、战机、武器\n\n'
             '二、史诗感构图\n- 宽银幕全景：展示战场全貌\n- 低角度仰拍：增强英雄主义感\n- 剪影效果：逆光下的士兵剪影',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '21:9',
           'imageSize': '2K',
         },
@@ -800,7 +801,7 @@ class SkillService {
             '一、奇幻核心元素\n- 奇幻生物：龙、精灵、独角兽、凤凰\n- 魔法效果：光芒、粒子、能量波纹、符文\n- 奇幻建筑：悬浮城堡、魔法塔、精灵树屋\n- 奇幻植物：发光的花朵、巨型蘑菇、水晶树\n\n'
             '二、魔法氛围描述词\n- 金色的魔法粒子在空气中飘散\n- 蓝色的能量弧光在指尖跳跃\n- 古老的符文在空中缓缓旋转发光',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -826,7 +827,7 @@ class SkillService {
             '一、动物摄影技法\n- 眼睛对焦：动物眼睛必须清晰锐利\n- 环境融合：动物与自然环境的和谐关系\n- 行为抓拍：捕捉动物最生动的瞬间\n\n'
             '二、微距生态\n- 极浅景深：背景完全虚化\n- 自然光线：避免使用闪光灯惊扰\n- 细节展现：绒毛、鳞片、翅膀纹理',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '16:9',
           'imageSize': '2K',
         },
@@ -852,7 +853,7 @@ class SkillService {
             '一、抽象艺术技法\n- 流体艺术：色彩的自由流动和融合\n- 几何构成：规则几何形状的组合\n- 泼洒技法：颜料的随机泼洒\n- 渐变色彩：色彩的平滑过渡\n\n'
             '二、色彩理论\n- 互补色对比：增强视觉冲击\n- 类似色和谐：柔和统一的色调\n- 三色组合：丰富而平衡',
         defaultParams: {
-          'model': 'gemini-3-pro-image-preview',
+          'model': _defaultImageModel,
           'aspectRatio': '1:1',
           'imageSize': '2K',
         },

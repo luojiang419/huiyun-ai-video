@@ -9,7 +9,7 @@ class GenerateParams {
   final int sampleSteps;
 
   const GenerateParams({
-    this.model = 'gemini-3-pro-image-preview',
+    this.model = 'nano-banana-fast',
     this.aspectRatio = 'auto',
     this.imageSize = '1K',
     this.imageQuality = 'auto',

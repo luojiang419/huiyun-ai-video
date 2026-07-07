@@ -82,7 +82,7 @@ void main() {
               type: 'image',
               url: 'https://broken.example',
               key: 'broken-key',
-              model: 'gemini-3-pro-image-preview',
+              model: 'nano-banana-fast',
               isDefault: false,
             ),
             ApiConfig(
@@ -91,7 +91,7 @@ void main() {
               type: 'image',
               url: 'https://stable.example',
               key: 'stable-key',
-              model: 'gemini-3-pro-image-preview',
+              model: 'nano-banana-fast',
               isDefault: true,
             ),
           ]),
@@ -105,7 +105,7 @@ void main() {
         .runImageTask(
           const GenerateImageTaskRequest(
             prompt: '测试提示词',
-            model: 'gemini-3-pro-image-preview',
+            model: 'nano-banana-fast',
             aspectRatio: '16:9',
             imageSize: '2K',
           ),

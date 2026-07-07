@@ -9,6 +9,9 @@ import '../models/video_item.dart';
 
 class ConfigFileService {
   static Future<void> _configWriteQueue = Future.value();
+  static const String defaultImageGenerationModel = 'nano-banana-fast';
+  static const String legacyGeminiDefaultImageGenerationModel =
+      'gemini-3-pro-image-preview';
 
   ConfigFileService({
     String? executableDir,
@@ -49,7 +52,7 @@ class ConfigFileService {
     'ai_model': '',
     'api_configs': <Map<String, dynamic>>[],
     'generate_params': {
-      'model': 'gemini-3-pro-image-preview',
+      'model': defaultImageGenerationModel,
       'aspectRatio': 'auto',
       'imageSize': '1K',
       'imageQuality': 'auto',
@@ -384,8 +387,13 @@ class ConfigFileService {
   Future<Map<String, dynamic>> loadGenerateParams() async {
     final config = await loadConfig();
     final params = config['generate_params'] as Map<String, dynamic>?;
+    final model = params?['model'] as String?;
     return {
-      'model': params?['model'] as String? ?? 'gemini-3-pro-image-preview',
+      'model': model == null || model.trim().isEmpty
+          ? defaultImageGenerationModel
+          : model == legacyGeminiDefaultImageGenerationModel
+          ? defaultImageGenerationModel
+          : model,
       'aspectRatio': params?['aspectRatio'] as String? ?? 'auto',
       'imageSize': params?['imageSize'] as String? ?? '1K',
       'imageQuality': params?['imageQuality'] as String? ?? 'auto',

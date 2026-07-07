@@ -20,7 +20,7 @@ void main() {
               'type': 'image',
               'url': 'https://grsai.dakka.com.cn',
               'key': 'sk-default',
-              'model': 'gemini-3-pro-image-preview',
+              'model': 'nano-banana-fast',
             },
           ],
         },
@@ -54,7 +54,7 @@ void main() {
               'type': 'image',
               'url': 'https://grsai.dakka.com.cn',
               'key': 'sk-default',
-              'model': 'gemini-3-pro-image-preview',
+              'model': 'nano-banana-fast',
             },
           ],
         },
@@ -96,7 +96,7 @@ void main() {
                   'type': 'image',
                   'url': 'https://grsai.dakka.com.cn',
                   'key': 'sk-default',
-                  'model': 'gemini-3-pro-image-preview',
+                  'model': 'nano-banana-fast',
                 },
               ],
             }),
@@ -125,6 +125,34 @@ void main() {
         }
       },
     );
+
+    test('migrates legacy generated-image default model on load', () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'config-model-migration-test-',
+      );
+      try {
+        final settingsDir = Directory('${tempDir.path}/data/Settings');
+        await settingsDir.create(recursive: true);
+        await File('${settingsDir.path}/config.json').writeAsString(
+          jsonEncode({
+            'generate_params': {
+              'model': 'gemini-3-pro-image-preview',
+              'aspectRatio': '16:9',
+              'imageSize': '1K',
+              'imageQuality': 'auto',
+              'sampleSteps': 30,
+            },
+          }),
+        );
+
+        final service = ConfigFileService(executableDir: tempDir.path);
+        final params = await service.loadGenerateParams();
+
+        expect(params['model'], 'nano-banana-fast');
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    });
 
     test(
       'restores missing config from local backup before creating defaults',

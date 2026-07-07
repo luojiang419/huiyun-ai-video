@@ -704,7 +704,7 @@ class ApiService {
     final Map<String, dynamic> body = {
       'model': model,
       'prompt': prompt,
-      'urls': preparedImages,
+      'images': preparedImages,
       'replyType': 'json',
     };
 

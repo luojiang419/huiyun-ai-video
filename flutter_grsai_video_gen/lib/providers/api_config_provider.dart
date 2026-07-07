@@ -33,6 +33,14 @@ class ApiConfigsNotifier extends StateNotifier<List<ApiConfig>> {
     return trimmed.isEmpty ? fallback : trimmed;
   }
 
+  String _preferGrsaiImageModel(String? saved) {
+    final trimmed = saved?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == 'gemini-3-pro-image-preview') {
+      return 'nano-banana-fast';
+    }
+    return trimmed;
+  }
+
   Future<void> ensureLoaded() async {
     if (state.isNotEmpty) {
       return;
@@ -77,10 +85,7 @@ class ApiConfigsNotifier extends StateNotifier<List<ApiConfig>> {
         type: 'image',
         url: _preferSavedValue(loadedGrsai?.url, 'https://grsai.dakka.com.cn'),
         key: loadedGrsai?.key ?? '',
-        model: _preferSavedValue(
-          loadedGrsai?.model,
-          'gemini-3-pro-image-preview',
-        ),
+        model: _preferGrsaiImageModel(loadedGrsai?.model),
         isDefault: isGrsaiDefaultFromFile,
       );
 

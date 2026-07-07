@@ -197,7 +197,7 @@ class _FilmWorkshopScreenState extends ConsumerState<FilmWorkshopScreen> {
   final List<String> _referenceImages = List.generate(14, (_) => '');
   final Map<int, String> _imageRemarks = {};
   String? _selectedStoryboard;
-  String _selectedModel = 'gemini-3-pro-image-preview';
+  String _selectedModel = 'nano-banana-fast';
   String _selectedAspectRatio = 'auto';
   String _selectedImageSize = '1K';
   String _selectedImageQuality = 'auto';

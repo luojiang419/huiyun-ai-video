@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:path/path.dart' as p;
 import '../constants/app_colors.dart';
 import '../constants/app_sizes.dart';
 import '../providers/image_provider.dart';
@@ -12,6 +13,7 @@ import '../providers/gallery_provider.dart';
 import '../providers/ai_assistant_provider.dart';
 import '../models/uploaded_image.dart';
 import '../models/ai_assistant_message.dart';
+import '../utils/reference_image_file_name.dart';
 import 'repaint_editor.dart';
 
 class ReferenceSidebar extends ConsumerStatefulWidget {
@@ -56,7 +58,7 @@ class _ReferenceSidebarState extends ConsumerState<ReferenceSidebar>
     final file = File(path);
     if (await file.exists()) {
       final bytes = await file.readAsBytes();
-      final fileName = file.path.split(Platform.pathSeparator).last;
+      final fileName = displayFileNameFromPath(file.path);
 
       final existingImages = ref.read(uploadedImagesProvider);
       final existing = existingImages.where((img) => img.name == fileName);
@@ -74,7 +76,7 @@ class _ReferenceSidebarState extends ConsumerState<ReferenceSidebar>
       final appDir = File(exePath).parent.path;
       final inputDir = Directory('$appDir/data/input');
       await inputDir.create(recursive: true);
-      final targetPath = '${inputDir.path}/$fileName';
+      final targetPath = p.join(inputDir.path, fileName);
       if (path != targetPath) {
         await file.copy(targetPath);
       }
@@ -185,27 +187,24 @@ class _ReferenceSidebarState extends ConsumerState<ReferenceSidebar>
                 final file = File(xFile.path);
                 if (await file.exists()) {
                   final bytes = await file.readAsBytes();
-                  final fileName = file.path.split(Platform.pathSeparator).last;
-
-                  if (ref
-                      .read(uploadedImagesProvider)
-                      .any((img) => img.name == fileName)) {
-                    continue;
-                  }
-
-                  final targetPath = '${inputDir.path}/$fileName';
-                  await file.copy(targetPath);
+                  final originalFileName = displayFileNameFromPath(file.path);
+                  final targetFileName = buildReferenceCopyFileName(
+                    originalFileName,
+                    DateTime.now().millisecondsSinceEpoch,
+                  );
+                  final targetPath = p.join(inputDir.path, targetFileName);
+                  await File(targetPath).writeAsBytes(bytes);
 
                   final image = UploadedImage(
                     id: const Uuid().v4(),
-                    name: fileName,
+                    name: targetFileName,
                     path: targetPath,
                     base64: base64Encode(bytes),
                     bytes: bytes,
                   );
                   ref.read(uploadedImagesProvider.notifier).addImage(image);
+                  ref.read(selectedImagesProvider.notifier).addImage(image);
                   if (ref.read(aiAssistantProvider).isActive) {
-                    ref.read(selectedImagesProvider.notifier).addImage(image);
                     ref
                         .read(aiAssistantProvider.notifier)
                         .registerReferenceImage(image);
@@ -339,12 +338,13 @@ class _ReferenceSidebarState extends ConsumerState<ReferenceSidebar>
                     final images = await ref
                         .read(uploadedImagesProvider.notifier)
                         .uploadImages();
-                    if (!ref.read(aiAssistantProvider).isActive) return;
                     for (final image in images) {
                       ref.read(selectedImagesProvider.notifier).addImage(image);
-                      ref
-                          .read(aiAssistantProvider.notifier)
-                          .registerReferenceImage(image);
+                      if (ref.read(aiAssistantProvider).isActive) {
+                        ref
+                            .read(aiAssistantProvider.notifier)
+                            .registerReferenceImage(image);
+                      }
                     }
                   },
                   style: ElevatedButton.styleFrom(

@@ -115,7 +115,7 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
   final _zImageSampleStepsController = TextEditingController();
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
-  String _selectedModel = 'gemini-3-pro-image-preview';
+  String _selectedModel = 'nano-banana-fast';
   String _aspectRatio = 'auto';
   String _imageSize = '1K';
   String _imageQuality = 'auto';
