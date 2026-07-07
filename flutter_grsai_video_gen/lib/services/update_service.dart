@@ -697,7 +697,10 @@ class UpdateService {
         '-File',
         scriptPath,
       ],
-      mode: ProcessStartMode.detached,
+      // On Windows, Dart's detached mode can start powershell.exe and still
+      // have it exit before running the script. A normal child keeps running
+      // after this app exits and reliably executes the launcher script.
+      mode: ProcessStartMode.normal,
       runInShell: false,
     );
   }

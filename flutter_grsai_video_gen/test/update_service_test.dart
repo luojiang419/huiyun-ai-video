@@ -198,7 +198,7 @@ void main() {
 
       expect(exitCode, 0);
       expect(launchedExecutable, 'powershell.exe');
-      expect(launchedMode, ProcessStartMode.detached);
+      expect(launchedMode, ProcessStartMode.normal);
       expect(launchedRunInShell, isFalse);
       expect(launchedArguments, isNotNull);
       final fileIndex = launchedArguments!.indexOf('-File');
