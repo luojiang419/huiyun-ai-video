@@ -1,6 +1,6 @@
 #define MyAppName "绘云AI 影视版"
 #ifndef MyAppVersion
-  #define MyAppVersion "V9.9"
+  #define MyAppVersion "V10.0"
 #endif
 #define MyAppPublisher "Leo.j"
 #define MyAppExeName "flutter_grsai_image_gen.exe"
