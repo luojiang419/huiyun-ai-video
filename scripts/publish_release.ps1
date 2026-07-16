@@ -24,10 +24,18 @@ function Invoke-Gh {
 
 function Get-ReleaseOrNull {
   try {
-    $raw = & gh api "repos/$Repo/releases/tags/$Version" 2>$null
-    if ($LASTEXITCODE -eq 0) { return $raw | ConvertFrom-Json }
+    $raw = & gh api "repos/$Repo/releases?per_page=100" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $matches = @(($raw | ConvertFrom-Json) | Where-Object {
+      $_.tag_name -ceq $Version
+    })
+    if ($matches.Count -gt 1) {
+      throw "发现多个同标签 Release：$Version"
+    }
+    if ($matches.Count -eq 1) { return $matches[0] }
     return $null
   } catch {
+    if ($_.Exception.Message -like '发现多个同标签*') { throw }
     return $null
   }
 }
