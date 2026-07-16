@@ -214,6 +214,11 @@ void main() {
       expect(script, contains('Start-Process -FilePath'));
       expect(script, contains('-Verb RunAs'));
       expect(script, contains(r'$installerDirArg'));
+      expect(script, contains('/VERYSILENT'));
+      expect(script, contains('/SUPPRESSMSGBOXES'));
+      expect(script, contains('/NORESTART'));
+      expect(script, contains(exeFile.path));
+      expect(script, contains('new application started'));
 
       final pendingJson =
           jsonDecode(await File(service.pendingUpdateFilePath).readAsString())
@@ -303,6 +308,14 @@ void main() {
       expect(script, contains(formalInstallDir.path));
       expect(script, contains('Start-Process -FilePath'));
       expect(script, contains('-Verb RunAs'));
+      expect(script, contains('/VERYSILENT'));
+      expect(
+        script,
+        contains(
+          path.join(formalInstallDir.path, 'flutter_grsai_image_gen.exe'),
+        ),
+      );
+      expect(script, contains('new application started'));
 
       final mirroredPendingFile = File(
         path.join(

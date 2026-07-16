@@ -600,6 +600,7 @@ class UpdateService {
       await _startInstallerPackage(
         installerPath: normalizedPending.installerPath,
         installDir: targetInstallDir,
+        executableName: path.basename(currentExecutablePath),
       );
       await Future<void>.delayed(const Duration(milliseconds: 500));
       _exitHandler(0);
@@ -662,11 +663,13 @@ class UpdateService {
   Future<void> _startInstallerPackage({
     required String installerPath,
     required String installDir,
+    required String executableName,
   }) async {
     final logDir = _logsDirectoryPathFor(installDir);
     final scriptPath = path.join(logDir, 'launch-installer.ps1');
     final launcherLogPath = path.join(logDir, 'installer-launch.log');
     final installerLogPath = path.join(logDir, 'installer-package.log');
+    final targetExecutablePath = path.join(installDir, executableName);
     await Directory(logDir).create(recursive: true);
 
     final scriptLines = <String>[
@@ -674,6 +677,7 @@ class UpdateService {
       '\$pidToWait = $pid',
       '\$installerPath = ${_toPowerShellSingleQuotedLiteral(installerPath)}',
       '\$installDir = ${_toPowerShellSingleQuotedLiteral(installDir)}',
+      '\$targetExecutablePath = ${_toPowerShellSingleQuotedLiteral(targetExecutablePath)}',
       '\$logPath = ${_toPowerShellSingleQuotedLiteral(launcherLogPath)}',
       '\$installerUiLogPath = ${_toPowerShellSingleQuotedLiteral(installerLogPath)}',
       r'function Write-UpdateLog([string]$message) {',
@@ -690,11 +694,14 @@ class UpdateService {
       r"  Write-UpdateLog ('starting installer: ' + $installerPath)",
       "  \$installerDirArg = '/DIR=\"' + \$installDir + '\"'",
       "  \$installerLogArg = '/LOG=\"' + \$installerUiLogPath + '\"'",
-      r'  $installerArgs = @($installerDirArg, $installerLogArg)',
+      r"  $installerArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NOCANCEL', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', '/NORESTART', $installerDirArg, $installerLogArg)",
       r'  $process = Start-Process -FilePath $installerPath -ArgumentList $installerArgs -Verb RunAs -Wait -PassThru',
       r"  Write-UpdateLog ('installer finished, exitCode=' + $process.ExitCode)",
       "  if (\$process.ExitCode -ne 0) { throw ('installer exit code: ' + \$process.ExitCode) }",
       r"  Write-UpdateLog 'installer completed'",
+      r"  if (-not (Test-Path -LiteralPath $targetExecutablePath)) { throw ('target executable not found: ' + $targetExecutablePath) }",
+      r'  Start-Process -FilePath $targetExecutablePath -WorkingDirectory $installDir',
+      r"  Write-UpdateLog ('new application started: ' + $targetExecutablePath)",
       r'} catch {',
       r"  Write-UpdateLog ('update launcher failed: ' + $_.Exception.Message)",
       r'}',
