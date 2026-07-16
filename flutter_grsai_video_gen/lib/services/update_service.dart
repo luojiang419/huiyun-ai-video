@@ -22,7 +22,7 @@ typedef UpdateProcessStarter =
     });
 
 typedef UpdateInstallProgressCallback =
-    void Function(UpdateInstallSession session, String message);
+    void Function(UpdateInstallSession session, UpdateInstallProgress progress);
 
 class UpdateException implements Exception {
   final String message;
@@ -457,12 +457,36 @@ class UpdateService {
       );
       await saveInstallSession(session, sessionFilePath: sessionFilePath);
       await _writeSessionLog(session.logFilePath, '独立更新安装器已接管更新流程');
-      _emitInstallProgress(onProgress, session, '独立更新程序已接管任务');
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 3,
+          stage: UpdateInstallProgressStage.preparing,
+          message: '独立更新程序已接管任务，正在准备安装环境',
+        ),
+      );
 
-      _emitInstallProgress(onProgress, session, '正在等待主程序退出');
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 8,
+          stage: UpdateInstallProgressStage.waitingForAppExit,
+          message: '正在等待旧版绘云AI安全退出',
+        ),
+      );
       await _waitForParentProcessExit(session.parentPid);
       await _writeSessionLog(session.logFilePath, '主程序进程已退出，开始校验安装包');
-      _emitInstallProgress(onProgress, session, '主程序已退出，正在校验安装包');
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 15,
+          stage: UpdateInstallProgressStage.verifyingPackage,
+          message: '旧版已退出，正在校验安装包完整性与 SHA-256',
+        ),
+      );
 
       final installerFile = File(session.installerPath);
       if (!await installerFile.exists()) {
@@ -472,14 +496,44 @@ class UpdateService {
         throw const UpdateException('安装包校验失败，文件可能已损坏');
       }
       await _writeSessionLog(session.logFilePath, '安装包校验完成，准备执行静默安装');
-      _emitInstallProgress(onProgress, session, '安装包校验完成，正在执行静默安装');
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 20,
+          stage: UpdateInstallProgressStage.requestingElevation,
+          message: '安装包校验完成，正在等待系统授权并启动静默安装',
+        ),
+      );
 
-      final exitCode = await _runElevatedSilentInstaller(session);
+      final exitCode = await _runElevatedSilentInstaller(
+        session,
+        onProgress: onProgress,
+      );
       if (exitCode != 0) {
         throw UpdateException('安装器退出码: $exitCode');
       }
 
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 94,
+          stage: UpdateInstallProgressStage.finalizing,
+          message: '程序文件安装完成，正在处理快捷方式和版本信息',
+        ),
+      );
+
       await Future<void>.delayed(const Duration(seconds: 2));
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 96,
+          stage: UpdateInstallProgressStage.finalizing,
+          message: '正在验证新版本主程序是否完整可用',
+        ),
+      );
       final targetExecutable = File(session.targetExecutablePath);
       if (!await targetExecutable.exists()) {
         throw UpdateException('安装完成后未找到主程序: ${session.targetExecutablePath}');
@@ -493,7 +547,15 @@ class UpdateService {
         message: '安装包已执行完成，等待新版本启动确认。',
       );
       await _writeSessionLog(session.logFilePath, '安装完成，准备重启新版本');
-      _emitInstallProgress(onProgress, session, '安装完成，正在启动新版本');
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 98,
+          stage: UpdateInstallProgressStage.launchingApplication,
+          message: '安装验证通过，正在启动新版本',
+        ),
+      );
 
       await _processStarter(
         session.targetExecutablePath,
@@ -502,7 +564,15 @@ class UpdateService {
         runInShell: false,
       );
       await _writeSessionLog(session.logFilePath, '已拉起新版本主程序');
-      _emitInstallProgress(onProgress, session, '新版本已启动，更新程序即将退出');
+      _emitInstallProgress(
+        onProgress,
+        session,
+        UpdateInstallProgress.stage(
+          percentage: 100,
+          stage: UpdateInstallProgressStage.completed,
+          message: '新版本已启动，更新程序即将退出',
+        ),
+      );
     } catch (error) {
       final message = error.toString();
       final failedSession = session!.copyWith(
@@ -524,7 +594,15 @@ class UpdateService {
         message: message,
       );
       await _writeSessionLog(failedSession.logFilePath, '更新失败: $message');
-      _emitInstallProgress(onProgress, failedSession, '更新失败：$message');
+      _emitInstallProgress(
+        onProgress,
+        failedSession,
+        UpdateInstallProgress.stage(
+          percentage: 0,
+          stage: UpdateInstallProgressStage.failed,
+          message: '更新失败：$message',
+        ),
+      );
       rethrow;
     }
   }
@@ -697,6 +775,10 @@ class UpdateService {
         _logsDirectoryPathFor(installDir),
         '$sessionId.log',
       ),
+      progressFilePath: path.join(
+        _logsDirectoryPathFor(installDir),
+        '$sessionId-progress.json',
+      ),
       createdAt: DateTime.now().toIso8601String(),
       parentPid: pid,
       status: UpdateInstallSessionStatus.launching,
@@ -784,7 +866,10 @@ class UpdateService {
     }
   }
 
-  Future<int> _runElevatedSilentInstaller(UpdateInstallSession session) async {
+  Future<int> _runElevatedSilentInstaller(
+    UpdateInstallSession session, {
+    UpdateInstallProgressCallback? onProgress,
+  }) async {
     final logDir = _logsDirectoryPathFor(session.installDir);
     await Directory(logDir).create(recursive: true);
     final scriptPath = path.join(logDir, '${session.sessionId}-install.ps1');
@@ -792,11 +877,24 @@ class UpdateService {
       logDir,
       '${session.sessionId}-installer.log',
     );
+    final installerProgressPath = session.progressFilePath.isNotEmpty
+        ? session.progressFilePath
+        : path.join(logDir, '${session.sessionId}-progress.json');
+    for (final stalePath in [
+      installerProgressPath,
+      '$installerProgressPath.tmp',
+    ]) {
+      final staleFile = File(stalePath);
+      if (await staleFile.exists()) {
+        await staleFile.delete();
+      }
+    }
     final scriptLines = <String>[
       r"$ErrorActionPreference = 'Stop'",
       '\$installerPath = ${_toPowerShellSingleQuotedLiteral(session.installerPath)}',
       '\$appDir = ${_toPowerShellSingleQuotedLiteral(session.installDir)}',
       '\$installerLogPath = ${_toPowerShellSingleQuotedLiteral(installerLogPath)}',
+      '\$installerProgressPath = ${_toPowerShellSingleQuotedLiteral(installerProgressPath)}',
       '\$scriptLogPath = ${_toPowerShellSingleQuotedLiteral(session.logFilePath)}',
       r'function Write-UpdateLog([string]$message) {',
       r"  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'",
@@ -813,7 +911,8 @@ class UpdateService {
       r"    '/CLOSEAPPLICATIONS',",
       r"    '/FORCECLOSEAPPLICATIONS',",
       r'    "/DIR=`"$appDir`"",',
-      r'    "/LOG=`"$installerLogPath`""',
+      r'    "/LOG=`"$installerLogPath`"",',
+      r'    "/UPDATEPROGRESS=`"$installerProgressPath`""',
       r'  )',
       r'  $process = Start-Process -FilePath $installerPath -ArgumentList $installerArgs -Verb RunAs -Wait -PassThru',
       r"  Write-UpdateLog ('安装进程已结束，ExitCode=' + $process.ExitCode)",
@@ -843,7 +942,43 @@ class UpdateService {
       mode: ProcessStartMode.normal,
       runInShell: false,
     );
-    return process.exitCode;
+    final exitCodeFuture = process.exitCode;
+    var lastInstallerPercentage = -1;
+    while (true) {
+      final state = await Future.any<(bool, int?)>([
+        exitCodeFuture.then((exitCode) => (true, exitCode)),
+        Future<(bool, int?)>.delayed(
+          const Duration(milliseconds: 250),
+          () => (false, null),
+        ),
+      ]);
+      final progress = await _readInstallerProgress(installerProgressPath);
+      if (progress != null &&
+          progress.installerPercentage != null &&
+          progress.installerPercentage! > lastInstallerPercentage) {
+        lastInstallerPercentage = progress.installerPercentage!;
+        _emitInstallProgress(onProgress, session, progress);
+      }
+      if (state.$1) {
+        return state.$2!;
+      }
+    }
+  }
+
+  Future<UpdateInstallProgress?> _readInstallerProgress(
+    String progressFilePath,
+  ) async {
+    final file = File(progressFilePath);
+    if (!await file.exists()) {
+      return null;
+    }
+    try {
+      return UpdateInstallProgress.tryParseInstallerPayload(
+        await file.readAsString(),
+      );
+    } on FileSystemException {
+      return null;
+    }
   }
 
   String _toPowerShellSingleQuotedLiteral(String value) {
@@ -1238,12 +1373,12 @@ $result |
   void _emitInstallProgress(
     UpdateInstallProgressCallback? onProgress,
     UpdateInstallSession session,
-    String message,
+    UpdateInstallProgress progress,
   ) {
     if (onProgress == null) {
       return;
     }
-    onProgress(session, message);
+    onProgress(session, progress);
   }
 
   Future<void> _clearInstalledPendingUpdate(String currentVersion) async {
@@ -1293,6 +1428,18 @@ $result |
     );
     if (await scriptFile.exists()) {
       await scriptFile.delete();
+    }
+    final progressFilePath = session.progressFilePath.isNotEmpty
+        ? session.progressFilePath
+        : path.join(
+            _logsDirectoryPathFor(session.installDir),
+            '${session.sessionId}-progress.json',
+          );
+    for (final progressPath in [progressFilePath, '$progressFilePath.tmp']) {
+      final progressFile = File(progressPath);
+      if (await progressFile.exists()) {
+        await progressFile.delete();
+      }
     }
   }
 

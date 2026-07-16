@@ -59,6 +59,59 @@ Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: no
 const
   UninstallRegPath = 'Software\Microsoft\Windows\CurrentVersion\Uninstall';
 
+var
+  UpdateProgressFilePath: String;
+  LastUpdateProgressPercentage: Integer;
+
+procedure WriteUpdateProgress(Percentage: Integer);
+var
+  ProgressDirectory: String;
+  TempPath: String;
+  Payload: String;
+begin
+  if UpdateProgressFilePath = '' then
+    Exit;
+
+  if Percentage < 0 then
+    Percentage := 0
+  else if Percentage > 100 then
+    Percentage := 100;
+
+  if Percentage = LastUpdateProgressPercentage then
+    Exit;
+
+  ProgressDirectory := ExtractFileDir(UpdateProgressFilePath);
+  if (ProgressDirectory <> '') and (not DirExists(ProgressDirectory)) then
+    ForceDirectories(ProgressDirectory);
+
+  Payload := Format('{"percentage":%d}', [Percentage]);
+  TempPath := UpdateProgressFilePath + '.tmp';
+  if not SaveStringToFile(TempPath, Payload, False) then
+  begin
+    Log('无法写入更新进度临时文件: ' + TempPath);
+    Exit;
+  end;
+
+  if FileExists(UpdateProgressFilePath) then
+    DeleteFile(UpdateProgressFilePath);
+  if not RenameFile(TempPath, UpdateProgressFilePath) then
+  begin
+    SaveStringToFile(UpdateProgressFilePath, Payload, False);
+    DeleteFile(TempPath);
+  end;
+  LastUpdateProgressPercentage := Percentage;
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+var
+  Percentage: Integer;
+begin
+  if MaxProgress <= 0 then
+    Exit;
+  Percentage := Round((CurProgress / MaxProgress) * 100);
+  WriteUpdateProgress(Percentage);
+end;
+
 function StartsText(const Prefix, Value: String): Boolean;
 begin
   Result := CompareText(Copy(Value, 1, Length(Prefix)), Prefix) = 0;
@@ -308,6 +361,9 @@ end;
 
 function InitializeSetup(): Boolean;
 begin
+  UpdateProgressFilePath := ExpandConstant('{param:UPDATEPROGRESS|}');
+  LastUpdateProgressPercentage := -1;
+  WriteUpdateProgress(0);
   Result := StopMainAppProcesses('setup initialization');
 end;
 
@@ -316,6 +372,14 @@ begin
   Result := '';
   if not StopMainAppProcesses('file installation') then
     Result := '旧版绘云AI进程仍在运行，安装已取消。';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    WriteUpdateProgress(99)
+  else if CurStep = ssDone then
+    WriteUpdateProgress(100);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

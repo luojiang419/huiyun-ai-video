@@ -54,11 +54,15 @@ class UpdateInstallerScreen extends ConsumerStatefulWidget {
       _UpdateInstallerScreenState();
 }
 
-class _UpdateInstallerScreenState
-    extends ConsumerState<UpdateInstallerScreen> {
+class _UpdateInstallerScreenState extends ConsumerState<UpdateInstallerScreen> {
   UpdateInstallSession? _session;
   String _headline = '正在准备更新';
   String _message = '正在接管更新任务，请勿关闭此窗口。';
+  UpdateInstallProgress _progress = const UpdateInstallProgress(
+    percentage: 1,
+    stage: UpdateInstallProgressStage.preparing,
+    message: '正在接管更新任务，请勿关闭此窗口。',
+  );
   String? _detail;
   bool _isFailed = false;
   bool _isCompleted = false;
@@ -83,17 +87,11 @@ class _UpdateInstallerScreenState
       sessionFilePath: widget.launchArgs.sessionFilePath,
     );
     if (initialSession == null) {
-      _showFailure(
-        '未找到更新会话文件，请重新下载更新包后再试。',
-        null,
-      );
+      _showFailure('未找到更新会话文件，请重新下载更新包后再试。', null);
       return;
     }
     if (initialSession.sessionId != widget.launchArgs.sessionId) {
-      _showFailure(
-        '更新会话编号不匹配，已终止本次自动更新。',
-        initialSession,
-      );
+      _showFailure('更新会话编号不匹配，已终止本次自动更新。', initialSession);
       return;
     }
 
@@ -102,7 +100,12 @@ class _UpdateInstallerScreenState
         _session = initialSession;
         _headline = _headlineForStatus(initialSession.status);
         _message = '更新程序已就绪，正在开始静默安装。';
-        _detail = _buildDetailText(initialSession);
+        _progress = const UpdateInstallProgress(
+          percentage: 2,
+          stage: UpdateInstallProgressStage.preparing,
+          message: '更新程序已就绪，正在开始静默安装。',
+        );
+        _detail = _buildDetailText(initialSession, _progress);
       });
     }
 
@@ -110,15 +113,24 @@ class _UpdateInstallerScreenState
       await updateService.runDetachedInstallSession(
         sessionFilePath: widget.launchArgs.sessionFilePath,
         expectedSessionId: widget.launchArgs.sessionId,
-        onProgress: (session, message) {
+        onProgress: (session, progress) {
           if (!mounted) {
             return;
           }
           setState(() {
+            final monotonicProgress = progress.percentage < _progress.percentage
+                ? UpdateInstallProgress(
+                    percentage: _progress.percentage,
+                    stage: progress.stage,
+                    message: progress.message,
+                    installerPercentage: progress.installerPercentage,
+                  )
+                : progress;
             _session = session;
-            _headline = _headlineForStatus(session.status);
-            _message = message;
-            _detail = _buildDetailText(session);
+            _progress = monotonicProgress;
+            _headline = monotonicProgress.stage.label;
+            _message = monotonicProgress.message;
+            _detail = _buildDetailText(session, monotonicProgress);
             _isFailed = session.status == UpdateInstallSessionStatus.failed;
           });
         },
@@ -129,9 +141,14 @@ class _UpdateInstallerScreenState
       }
       setState(() {
         _isCompleted = true;
+        _progress = const UpdateInstallProgress(
+          percentage: 100,
+          stage: UpdateInstallProgressStage.completed,
+          message: '新版本正在启动，本窗口即将自动关闭。',
+        );
         _headline = '更新完成';
         _message = '新版本正在启动，本窗口即将自动关闭。';
-        _detail = _buildDetailText(_session);
+        _detail = _buildDetailText(_session, _progress);
       });
       Future<void>.delayed(const Duration(seconds: 1), () {
         if (mounted) {
@@ -154,10 +171,16 @@ class _UpdateInstallerScreenState
       _session = session;
       _isFailed = true;
       _isCompleted = false;
+      _progress = UpdateInstallProgress(
+        percentage: _progress.percentage,
+        stage: UpdateInstallProgressStage.failed,
+        message: '安装更新失败，请稍后重试。',
+        installerPercentage: _progress.installerPercentage,
+      );
       _headline = '更新失败';
       _message = '安装更新失败，请稍后重试。';
       final details = <String>[message];
-      final sessionDetails = _buildDetailText(session);
+      final sessionDetails = _buildDetailText(session, _progress);
       if (sessionDetails != null && sessionDetails.isNotEmpty) {
         details.add(sessionDetails);
       }
@@ -179,14 +202,21 @@ class _UpdateInstallerScreenState
     }
   }
 
-  String? _buildDetailText(UpdateInstallSession? session) {
+  String? _buildDetailText(
+    UpdateInstallSession? session,
+    UpdateInstallProgress progress,
+  ) {
     if (session == null) {
       return null;
     }
     final lines = <String>[
       '目标版本：${session.targetVersion}',
       '安装目录：${session.installDir}',
+      '当前阶段：${progress.stage.label}',
     ];
+    if (progress.installerPercentage != null) {
+      lines.add('安装器内部进度：${progress.installerPercentage}%');
+    }
     if (session.logFilePath.isNotEmpty) {
       lines.add('日志文件：${session.logFilePath}');
     }
@@ -273,11 +303,34 @@ class _UpdateInstallerScreenState
                 ],
               ),
               const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: const Text(
+                      '总体安装进度',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${_progress.percentage}%',
+                    style: TextStyle(
+                      color: _isFailed ? Colors.redAccent : AppColors.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
                   minHeight: 8,
-                  value: _isFailed ? 1 : (_isCompleted ? 1 : null),
+                  value: _progress.percentage / 100,
                   backgroundColor: AppColors.border1,
                   color: _isFailed ? Colors.redAccent : AppColors.primary,
                 ),

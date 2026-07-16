@@ -15,6 +15,17 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('inno installer exposes real silent install progress contract', () {
+    final installerScript = File(
+      path.join(Directory.current.path, 'windows', 'installer.iss'),
+    ).readAsStringSync();
+
+    expect(installerScript, contains('CurInstallProgressChanged'));
+    expect(installerScript, contains("{param:UPDATEPROGRESS|}"));
+    expect(installerScript, contains('WriteUpdateProgress(100)'));
+    expect(installerScript, contains("UpdateProgressFilePath + '.tmp'"));
+  });
+
   test('checks latest manifest from server', () async {
     final bytes = utf8.encode('installer-body');
     final hash = sha256.convert(bytes).toString().toUpperCase();
@@ -217,6 +228,7 @@ void main() {
       expect(session.installerPath, installerFile.path);
       expect(session.installDir, appDir.path);
       expect(session.status, UpdateInstallSessionStatus.launching);
+      expect(session.progressFilePath, endsWith('-progress.json'));
       expect(File(session.stagedExecutablePath).existsSync(), isTrue);
       expect(
         session.stagedExecutablePath,
@@ -423,7 +435,7 @@ void main() {
             status: UpdateInstallSessionStatus.prepared,
           );
       await service.saveInstallSession(session);
-      final progress = <String>[];
+      final progress = <UpdateInstallProgress>[];
 
       await service.runDetachedInstallSession(
         sessionFilePath: path.join(
@@ -431,7 +443,7 @@ void main() {
           '${session.sessionId}.json',
         ),
         expectedSessionId: session.sessionId,
-        onProgress: (_, message) => progress.add(message),
+        onProgress: (_, event) => progress.add(event),
       );
 
       expect(launches, hasLength(2));
@@ -451,6 +463,8 @@ void main() {
       expect(script, contains('/NORESTART'));
       expect(script, contains('/NOCANCEL'));
       expect(script, contains('/FORCECLOSEAPPLICATIONS'));
+      expect(script, contains('/UPDATEPROGRESS='));
+      expect(script, contains('storyboard-style-install-progress.json'));
       expect(script, contains('-Verb RunAs -Wait -PassThru'));
       expect(launches.last.executable, executable.path);
       expect(launches.last.mode, ProcessStartMode.detached);
@@ -462,7 +476,14 @@ void main() {
         ),
       );
       expect(completed!.status, UpdateInstallSessionStatus.completed);
-      expect(progress.last, contains('新版本已启动'));
+      expect(progress.last.message, contains('新版本已启动'));
+      expect(progress.last.percentage, 100);
+      for (var index = 1; index < progress.length; index++) {
+        expect(
+          progress[index].percentage,
+          greaterThanOrEqualTo(progress[index - 1].percentage),
+        );
+      }
     },
   );
 

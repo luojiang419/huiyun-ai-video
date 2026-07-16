@@ -26,6 +26,8 @@ void main() {
           r'D:\Program Files\VideoGen\data\.system_update\acks\session-1.ack',
       logFilePath:
           r'D:\Program Files\VideoGen\data\.system_update\logs\session-1.log',
+      progressFilePath:
+          r'D:\Program Files\VideoGen\data\.system_update\logs\session-1-progress.json',
       createdAt: '2026-06-27T00:00:00Z',
       parentPid: 1234,
       status: UpdateInstallSessionStatus.installing,
@@ -39,6 +41,7 @@ void main() {
     expect(decoded.parentPid, 1234);
     expect(decoded.status, UpdateInstallSessionStatus.installing);
     expect(decoded.executableName, 'flutter_grsai_image_gen.exe');
+    expect(decoded.progressFilePath, contains('session-1-progress.json'));
     expect(
       decoded.sourcePendingUpdateFilePath,
       r'G:\data\app\AI\实测输出\install\data\.system_update\pending_update.json',
@@ -92,4 +95,33 @@ void main() {
       expect(parsed!.sessionId, 'legacy-session');
     },
   );
+
+  test(
+    'installer payload maps real 0-100 progress into overall 20-90 range',
+    () {
+      final start = UpdateInstallProgress.tryParseInstallerPayload(
+        '{"percentage":0}',
+      );
+      final middle = UpdateInstallProgress.tryParseInstallerPayload(
+        '{"percentage":50}',
+      );
+      final end = UpdateInstallProgress.tryParseInstallerPayload(
+        '{"percentage":100}',
+      );
+
+      expect(start!.percentage, 20);
+      expect(middle!.percentage, 55);
+      expect(middle.installerPercentage, 50);
+      expect(middle.stage, UpdateInstallProgressStage.installingFiles);
+      expect(end!.percentage, 90);
+    },
+  );
+
+  test('installer payload rejects invalid or missing percentage', () {
+    expect(UpdateInstallProgress.tryParseInstallerPayload('not-json'), isNull);
+    expect(
+      UpdateInstallProgress.tryParseInstallerPayload('{"stage":"install"}'),
+      isNull,
+    );
+  });
 }

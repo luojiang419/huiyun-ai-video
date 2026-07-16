@@ -38,7 +38,12 @@ class _FakeUpdateInstallerService extends UpdateService {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     onProgress?.call(
       session.copyWith(status: UpdateInstallSessionStatus.installing),
-      '安装包校验完成，正在执行静默安装',
+      const UpdateInstallProgress(
+        percentage: 55,
+        stage: UpdateInstallProgressStage.installingFiles,
+        message: '正在静默安装程序文件（安装器进度 50%）',
+        installerPercentage: 50,
+      ),
     );
 
     await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -47,13 +52,25 @@ class _FakeUpdateInstallerService extends UpdateService {
         status: UpdateInstallSessionStatus.failed,
         lastError: '安装器退出码: 1',
       );
-      onProgress?.call(failedSession, '更新失败：安装器退出码: 1');
+      onProgress?.call(
+        failedSession,
+        const UpdateInstallProgress(
+          percentage: 55,
+          stage: UpdateInstallProgressStage.failed,
+          message: '更新失败：安装器退出码: 1',
+          installerPercentage: 50,
+        ),
+      );
       throw const UpdateException('安装器退出码: 1');
     }
 
     onProgress?.call(
       session.copyWith(status: UpdateInstallSessionStatus.completed),
-      '新版本已启动，更新程序即将退出',
+      const UpdateInstallProgress(
+        percentage: 100,
+        stage: UpdateInstallProgressStage.completed,
+        message: '新版本已启动，更新程序即将退出',
+      ),
     );
   }
 }
@@ -112,8 +129,10 @@ void main() {
 
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 25));
-      expect(find.text('正在安装更新'), findsOneWidget);
-      expect(find.text('安装包校验完成，正在执行静默安装'), findsOneWidget);
+      expect(find.text('写入程序文件'), findsWidgets);
+      expect(find.text('55%'), findsOneWidget);
+      expect(find.text('正在静默安装程序文件（安装器进度 50%）'), findsOneWidget);
+      expect(find.textContaining('安装器内部进度：50%'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 30));
       expect(find.text('更新完成'), findsOneWidget);
