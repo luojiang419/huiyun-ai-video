@@ -38,7 +38,7 @@ void main() {
     );
 
     expect(find.text('立即更新'), findsOneWidget);
-    expect(find.text('下次启动时更新'), findsOneWidget);
+    expect(find.text('下次启动更新'), findsOneWidget);
   });
 
   testWidgets('mandatory update dialog only shows install now', (tester) async {
@@ -53,6 +53,6 @@ void main() {
     );
 
     expect(find.text('立即更新'), findsOneWidget);
-    expect(find.text('下次启动时更新'), findsNothing);
+    expect(find.text('下次启动更新'), findsNothing);
   });
 }

@@ -7,6 +7,7 @@ class UpdateInfo {
   final String publishedAt;
   final String releaseNotes;
   final bool mandatory;
+  final String sourceSha;
 
   const UpdateInfo({
     required this.version,
@@ -17,6 +18,7 @@ class UpdateInfo {
     required this.publishedAt,
     required this.releaseNotes,
     required this.mandatory,
+    this.sourceSha = '',
   });
 
   factory UpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -47,6 +49,7 @@ class UpdateInfo {
       publishedAt: requiredString('publishedAt'),
       releaseNotes: json['releaseNotes']?.toString() ?? '',
       mandatory: json['mandatory'] == true,
+      sourceSha: json['sourceSha']?.toString().trim() ?? '',
     );
   }
 
@@ -60,6 +63,7 @@ class UpdateInfo {
       'publishedAt': publishedAt,
       'releaseNotes': releaseNotes,
       'mandatory': mandatory,
+      if (sourceSha.isNotEmpty) 'sourceSha': sourceSha,
     };
   }
 

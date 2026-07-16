@@ -1,13 +1,13 @@
 #define MyAppName "绘云AI 影视版"
 #ifndef MyAppVersion
-  #define MyAppVersion "V10.0"
+  #define MyAppVersion "V10.0.0"
 #endif
 #define MyAppPublisher "Leo.j"
 #define MyAppExeName "flutter_grsai_image_gen.exe"
 #define MyAppId "HuiYunAI.Video"
 #define MyAppLegacyIdPrefix "HuiYunAI.Video"
 #ifndef MyAppOutputBaseFilename
-  #define MyAppOutputBaseFilename "影视版-安装包-" + MyAppVersion
+  #define MyAppOutputBaseFilename "HuiYunAI-VideoGen-Setup-" + MyAppVersion
 #endif
 #ifndef MyAppOutputDir
   #define MyAppOutputDir "..\..\dist\影视版\影视版-" + MyAppVersion

@@ -1,10 +1,16 @@
 class Settings {
   static const String uploadMethodRelayUrl = 'relay_url';
   static const String uploadMethodBase64 = 'base64';
-  static const String updateDownloadProxySystem = 'system_proxy';
-  static const String updateDownloadProxyCustom = 'custom_proxy';
-  static const String defaultUpdateDownloadProxyAddress =
-      'http://127.0.0.1:7890';
+  static const String updatePolicyAutomatic = 'automatic';
+  static const String updatePolicyManual = 'manual';
+  static const String updatePolicyDisabled = 'disabled';
+  static const String updateNetworkAutomaticProxy = 'automatic_proxy';
+  static const String updateNetworkManualProxy = 'manual_proxy';
+  static const String updateNetworkDirect = 'direct';
+  static const String defaultUpdateManualProxyUrl = 'http://127.0.0.1:7890';
+
+  static const String _legacyUpdateProxySystem = 'system_proxy';
+  static const String _legacyUpdateProxyCustom = 'custom_proxy';
 
   final String apiUrl;
   final String apiKey;
@@ -12,8 +18,9 @@ class Settings {
   final String aiApiKey;
   final String aiModel;
   final String uploadMethod;
-  final String updateDownloadProxyMode;
-  final String updateDownloadProxyAddress;
+  final String updatePolicy;
+  final String updateNetworkMode;
+  final String updateManualProxyUrl;
   final String outputFolder;
   final String filenameRule;
   final String customFilename;
@@ -27,8 +34,9 @@ class Settings {
     required this.aiApiKey,
     required this.aiModel,
     required this.uploadMethod,
-    required this.updateDownloadProxyMode,
-    required this.updateDownloadProxyAddress,
+    required this.updatePolicy,
+    required this.updateNetworkMode,
+    required this.updateManualProxyUrl,
     required this.outputFolder,
     required this.filenameRule,
     required this.customFilename,
@@ -43,8 +51,9 @@ class Settings {
     aiApiKey: '',
     aiModel: '',
     uploadMethod: uploadMethodRelayUrl,
-    updateDownloadProxyMode: updateDownloadProxySystem,
-    updateDownloadProxyAddress: defaultUpdateDownloadProxyAddress,
+    updatePolicy: updatePolicyAutomatic,
+    updateNetworkMode: updateNetworkAutomaticProxy,
+    updateManualProxyUrl: defaultUpdateManualProxyUrl,
     outputFolder: 'data/output',
     filenameRule: 'date',
     customFilename: 'nano',
@@ -59,8 +68,9 @@ class Settings {
     'aiApiKey': aiApiKey,
     'aiModel': aiModel,
     'uploadMethod': uploadMethod,
-    'updateDownloadProxyMode': updateDownloadProxyMode,
-    'updateDownloadProxyAddress': updateDownloadProxyAddress,
+    'updatePolicy': updatePolicy,
+    'updateNetworkMode': updateNetworkMode,
+    'updateManualProxyUrl': updateManualProxyUrl,
     'outputFolder': outputFolder,
     'filenameRule': filenameRule,
     'customFilename': customFilename,
@@ -74,15 +84,28 @@ class Settings {
     final normalizedUploadMethod = uploadMethod == uploadMethodBase64
         ? uploadMethodBase64
         : uploadMethodRelayUrl;
-    final updateDownloadProxyMode =
-        json['updateDownloadProxyMode']?.toString() ??
-        updateDownloadProxySystem;
-    final normalizedUpdateDownloadProxyMode =
-        updateDownloadProxyMode == updateDownloadProxyCustom
-        ? updateDownloadProxyCustom
-        : updateDownloadProxySystem;
-    final updateDownloadProxyAddress =
-        json['updateDownloadProxyAddress']?.toString().trim() ?? '';
+    final rawUpdatePolicy = json['updatePolicy']?.toString();
+    final normalizedUpdatePolicy = switch (rawUpdatePolicy) {
+      updatePolicyManual => updatePolicyManual,
+      updatePolicyDisabled => updatePolicyDisabled,
+      _ => updatePolicyAutomatic,
+    };
+    final rawUpdateNetworkMode =
+        json['updateNetworkMode']?.toString() ??
+        json['updateDownloadProxyMode']?.toString();
+    final normalizedUpdateNetworkMode = switch (rawUpdateNetworkMode) {
+      updateNetworkManualProxy ||
+      _legacyUpdateProxyCustom => updateNetworkManualProxy,
+      updateNetworkDirect => updateNetworkDirect,
+      updateNetworkAutomaticProxy ||
+      _legacyUpdateProxySystem => updateNetworkAutomaticProxy,
+      _ => updateNetworkAutomaticProxy,
+    };
+    final updateManualProxyUrl =
+        (json['updateManualProxyUrl'] ?? json['updateDownloadProxyAddress'])
+            ?.toString()
+            .trim() ??
+        '';
 
     return Settings(
       apiUrl: json['apiUrl'] ?? '',
@@ -91,10 +114,11 @@ class Settings {
       aiApiKey: json['aiApiKey'] ?? '',
       aiModel: json['aiModel'] ?? '',
       uploadMethod: normalizedUploadMethod,
-      updateDownloadProxyMode: normalizedUpdateDownloadProxyMode,
-      updateDownloadProxyAddress: updateDownloadProxyAddress.isEmpty
-          ? defaultUpdateDownloadProxyAddress
-          : updateDownloadProxyAddress,
+      updatePolicy: normalizedUpdatePolicy,
+      updateNetworkMode: normalizedUpdateNetworkMode,
+      updateManualProxyUrl: updateManualProxyUrl.isEmpty
+          ? defaultUpdateManualProxyUrl
+          : updateManualProxyUrl,
       outputFolder: json['outputFolder'] ?? 'data/output',
       filenameRule: json['filenameRule'] ?? 'date',
       customFilename: json['customFilename'] ?? 'nano',
@@ -110,8 +134,9 @@ class Settings {
     String? aiApiKey,
     String? aiModel,
     String? uploadMethod,
-    String? updateDownloadProxyMode,
-    String? updateDownloadProxyAddress,
+    String? updatePolicy,
+    String? updateNetworkMode,
+    String? updateManualProxyUrl,
     String? outputFolder,
     String? filenameRule,
     String? customFilename,
@@ -124,10 +149,9 @@ class Settings {
     aiApiKey: aiApiKey ?? this.aiApiKey,
     aiModel: aiModel ?? this.aiModel,
     uploadMethod: uploadMethod ?? this.uploadMethod,
-    updateDownloadProxyMode:
-        updateDownloadProxyMode ?? this.updateDownloadProxyMode,
-    updateDownloadProxyAddress:
-        updateDownloadProxyAddress ?? this.updateDownloadProxyAddress,
+    updatePolicy: updatePolicy ?? this.updatePolicy,
+    updateNetworkMode: updateNetworkMode ?? this.updateNetworkMode,
+    updateManualProxyUrl: updateManualProxyUrl ?? this.updateManualProxyUrl,
     outputFolder: outputFolder ?? this.outputFolder,
     filenameRule: filenameRule ?? this.filenameRule,
     customFilename: customFilename ?? this.customFilename,

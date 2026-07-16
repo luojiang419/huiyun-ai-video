@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_version.dart';
+import '../models/settings.dart';
 import '../models/pending_update_job.dart';
 import '../services/update_service.dart';
 
@@ -60,6 +61,7 @@ final updateProvider = StateNotifierProvider<UpdateNotifier, UpdateState>((
 class UpdateNotifier extends StateNotifier<UpdateState> {
   final UpdateService _service;
   bool _startupHandled = false;
+  bool _operationInProgress = false;
 
   UpdateNotifier(this._service) : super(const UpdateState());
 
@@ -68,13 +70,49 @@ class UpdateNotifier extends StateNotifier<UpdateState> {
       return state.pendingJob;
     }
     _startupHandled = true;
-    return checkAndDownloadUpdate(auto: true, includeSkipped: false);
+    final settings = await UpdateService.loadPersistedUpdateSettings();
+    if (settings.updatePolicy == Settings.updatePolicyDisabled) {
+      state = const UpdateState(status: UpdateStatus.idle, message: '更新已禁止');
+      return null;
+    }
+    if (settings.updatePolicy == Settings.updatePolicyManual) {
+      final recovered = await _service.reconcilePendingUpdate(
+        currentVersion: appReleaseVersion,
+      );
+      if (recovered == null) return null;
+      state = UpdateState(
+        status: recovered.status == PendingUpdateStatus.failed
+            ? UpdateStatus.failed
+            : UpdateStatus.ready,
+        pendingJob: recovered,
+        progress: 1,
+        message: '已检测到待安装更新 ${recovered.targetVersion}',
+        errorMessage: recovered.lastFailureReason.isEmpty
+            ? null
+            : recovered.lastFailureReason,
+      );
+      return recovered;
+    }
+    try {
+      return await checkAndDownloadUpdate(auto: true, includeSkipped: false);
+    } catch (_) {
+      // Automatic update failures must never block normal application startup.
+      return null;
+    }
   }
 
   Future<PendingUpdateJob?> checkAndDownloadUpdate({
     bool includeSkipped = false,
     bool auto = false,
   }) async {
+    if (_operationInProgress) {
+      return state.pendingJob;
+    }
+    final settings = await UpdateService.loadPersistedUpdateSettings();
+    if (settings.updatePolicy == Settings.updatePolicyDisabled) {
+      throw const UpdateException('更新已禁止，请先修改更新策略');
+    }
+    _operationInProgress = true;
     try {
       state = UpdateState(
         status: UpdateStatus.checking,
@@ -139,6 +177,8 @@ class UpdateNotifier extends StateNotifier<UpdateState> {
         errorMessage: error.toString(),
       );
       rethrow;
+    } finally {
+      _operationInProgress = false;
     }
   }
 

@@ -29,7 +29,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _userNicknameController;
   late String _filenameRule;
   late String _uploadMethod;
-  late String _updateDownloadProxyMode;
+  late String _updatePolicy;
+  late String _updateNetworkMode;
 
   final TextEditingController _vlmUrlController = TextEditingController();
   final TextEditingController _vlmModelController = TextEditingController();
@@ -62,8 +63,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     _filenameRule = settings.filenameRule;
     _uploadMethod = settings.uploadMethod;
-    _updateDownloadProxyMode = settings.updateDownloadProxyMode;
-    _updateProxyAddressController.text = settings.updateDownloadProxyAddress;
+    _updatePolicy = settings.updatePolicy;
+    _updateNetworkMode = settings.updateNetworkMode;
+    _updateProxyAddressController.text = settings.updateManualProxyUrl;
 
     final bridgeService = ref.read(wan2gpBridgeServiceProvider);
     _bridgeRunning = bridgeService.isRunning;
@@ -282,8 +284,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       aiApiKey: current.aiApiKey,
       aiModel: current.aiModel,
       uploadMethod: _uploadMethod,
-      updateDownloadProxyMode: _updateDownloadProxyMode,
-      updateDownloadProxyAddress: _updateProxyAddressController.text.trim(),
+      updatePolicy: _updatePolicy,
+      updateNetworkMode: _updateNetworkMode,
+      updateManualProxyUrl: _updateProxyAddressController.text.trim(),
       outputFolder: _outputFolderController.text.trim(),
       filenameRule: _filenameRule,
       customFilename: _customFilenameController.text.trim(),
@@ -315,6 +318,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _checkAndInstallUpdateNow() async {
+    if (_updatePolicy == Settings.updatePolicyDisabled) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('更新已禁止，请先将更新策略改为自动更新或手动更新')));
+      return;
+    }
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('正在检查并下载更新...')));
@@ -352,6 +361,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         updateState.status == UpdateStatus.checking ||
         updateState.status == UpdateStatus.downloading ||
         updateState.status == UpdateStatus.installing;
+    final isUpdateDisabled = _updatePolicy == Settings.updatePolicyDisabled;
 
     return Container(
       color: AppColors.background,
@@ -367,7 +377,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 style: TextStyle(color: AppColors.text, fontSize: 24),
               ),
               OutlinedButton.icon(
-                onPressed: isUpdateBusy ? null : _checkAndInstallUpdateNow,
+                onPressed: isUpdateBusy || isUpdateDisabled
+                    ? null
+                    : _checkAndInstallUpdateNow,
                 icon: const Icon(Icons.system_update_alt, size: 18),
                 label: Text(isUpdateBusy ? '更新处理中...' : '检查更新'),
               ),
@@ -597,31 +609,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _buildUpdateDownloadProxyControls() {
-    final isCustom =
-        _updateDownloadProxyMode == Settings.updateDownloadProxyCustom;
+    final isManualProxy =
+        _updateNetworkMode == Settings.updateNetworkManualProxy;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildDropdown(
-          '更新下载',
-          _updateDownloadProxyMode,
+          '更新策略',
+          _updatePolicy,
           const [
-            (Settings.updateDownloadProxySystem, '系统代理'),
-            (Settings.updateDownloadProxyCustom, '自定义地址'),
+            (Settings.updatePolicyAutomatic, '自动更新（默认）'),
+            (Settings.updatePolicyManual, '手动更新'),
+            (Settings.updatePolicyDisabled, '禁止更新'),
           ],
           (value) {
             if (value == null) return;
-            setState(() => _updateDownloadProxyMode = value);
+            setState(() => _updatePolicy = value);
+          },
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '自动更新会在启动后检查并下载；手动更新只响应“检查更新”；禁止更新不会发起更新请求。',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        _buildDropdown(
+          '更新网络',
+          _updateNetworkMode,
+          const [
+            (Settings.updateNetworkAutomaticProxy, '自动检测代理（默认）'),
+            (Settings.updateNetworkManualProxy, '手动代理'),
+            (Settings.updateNetworkDirect, '直连'),
+          ],
+          (value) {
+            if (value == null) return;
+            setState(() => _updateNetworkMode = value);
           },
         ),
         const SizedBox(height: 8),
         Text(
-          isCustom
-              ? '自定义地址可填写 http://127.0.0.1:7890 或 127.0.0.1:7890。'
-              : '自动读取环境变量代理和 Windows 系统代理；访问本机地址时直连。',
+          isManualProxy
+              ? '手动代理可填写 http://127.0.0.1:7890、127.0.0.1:7890 或 SOCKS 地址。'
+              : _updateNetworkMode == Settings.updateNetworkDirect
+              ? '直连会显式绕过环境变量、系统代理和本机代理。'
+              : '自动读取环境变量与 Windows 系统代理，并探测本机常用代理端口；找不到时直连。',
           style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
         ),
-        if (isCustom) ...[
+        if (isManualProxy) ...[
           const SizedBox(height: 12),
           _buildTextField('自定义代理地址', _updateProxyAddressController),
         ],

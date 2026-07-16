@@ -1,0 +1,19 @@
+{
+  "api_url": "",
+  "api_key": "",
+  "ai_api_url": "",
+  "ai_api_key": "",
+  "ai_model": "",
+  "api_configs": [],
+  "generate_params": {
+    "model": "nano-banana-fast",
+    "aspectRatio": "auto",
+    "imageSize": "1K",
+    "imageQuality": "auto",
+    "sampleSteps": 30
+  },
+  "video": {
+    "nodes": [],
+    "gallery": []
+  }
+}

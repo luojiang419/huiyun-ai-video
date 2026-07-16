@@ -7,6 +7,7 @@ import 'package:dio/io.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/update_config.dart';
 import '../models/pending_update_job.dart';
 import '../models/settings.dart';
 import '../models/update_install_session.dart';
@@ -34,9 +35,8 @@ class UpdateException implements Exception {
 }
 
 class UpdateService {
-  static const releaseRepo = 'luojiang419/huiyun-ai-video-releases';
-  static const latestUpdateJsonUrl =
-      'https://github.com/$releaseRepo/releases/latest/download/update.json';
+  static const releaseRepo = UpdateConfig.releaseRepo;
+  static const latestUpdateJsonUrl = UpdateConfig.latestManifestUrl;
   static const skippedVersionKey = 'skipped_update_version';
 
   final Dio? _providedDio;
@@ -132,6 +132,9 @@ class UpdateService {
         options: Options(responseType: ResponseType.plain),
       );
       final info = UpdateInfo.fromJson(_decodeUpdateJson(response.data));
+      if (updateJsonUrl == latestUpdateJsonUrl) {
+        UpdateConfig.validateProductionManifest(info);
+      }
       if (!isNewerAppVersion(info.version, currentVersion)) {
         return null;
       }
@@ -170,13 +173,14 @@ class UpdateService {
     final targetPath = path.join(downloadsDir.path, info.installerName);
     final targetFile = File(targetPath);
     if (await targetFile.exists()) {
-      if (await verifySha256(targetPath, info.sha256)) {
+      if (await targetFile.length() == info.size &&
+          await verifySha256(targetPath, info.sha256)) {
         return targetPath;
       }
       await targetFile.delete();
     }
 
-    final tempPath = '$targetPath.download';
+    final tempPath = '$targetPath.part';
     final tempFile = File(tempPath);
     if (await tempFile.exists()) {
       await tempFile.delete();
@@ -189,6 +193,10 @@ class UpdateService {
         tempPath,
         onReceiveProgress: onReceiveProgress,
       );
+      if (await tempFile.length() != info.size) {
+        await tempFile.delete();
+        throw const UpdateException('安装包大小校验失败，文件可能不完整');
+      }
       if (!await verifySha256(tempPath, info.sha256)) {
         await tempFile.delete();
         throw const UpdateException('安装包校验失败，文件可能已损坏');
@@ -255,6 +263,12 @@ class UpdateService {
       return null;
     }
 
+    if (path.basename(pending.installerPath) != pending.info.installerName ||
+        await installerFile.length() != pending.info.size) {
+      await clearPendingUpdate();
+      return null;
+    }
+
     if (!isNewerAppVersion(pending.targetVersion, currentVersion)) {
       await clearPendingUpdate();
       return null;
@@ -294,6 +308,7 @@ class UpdateService {
     if (pending != null &&
         pending.targetVersion == info.version &&
         await File(pending.installerPath).exists() &&
+        await File(pending.installerPath).length() == info.size &&
         await verifySha256(pending.installerPath, pending.sha256)) {
       final updated = pending.copyWith(
         info: info,
@@ -338,6 +353,10 @@ class UpdateService {
     required String currentVersion,
   }) async {
     if (!_isWindowsProvider()) {
+      return false;
+    }
+    final settings = await loadPersistedUpdateSettings();
+    if (settings.updatePolicy == Settings.updatePolicyDisabled) {
       return false;
     }
 
@@ -1187,7 +1206,16 @@ $result |
     final dio =
         _providedDio ??
         Dio(BaseOptions(connectTimeout: const Duration(seconds: 8)));
-    final proxySettings = await _downloadProxySettingsProvider();
+    var proxySettings = await _downloadProxySettingsProvider();
+    if (proxySettings.mode == Settings.updateNetworkManualProxy &&
+        buildCustomProxyRule(proxySettings.customAddress) == 'DIRECT') {
+      throw const UpdateException('手动代理地址无效，请填写主机和端口，例如 http://127.0.0.1:7890');
+    }
+    if (proxySettings.mode == Settings.updateNetworkAutomaticProxy) {
+      proxySettings = proxySettings.copyWith(
+        automaticProxyRule: await detectAutomaticProxyRule(),
+      );
+    }
     _configureProxy(dio, proxySettings);
     return dio;
   }
@@ -1204,13 +1232,56 @@ $result |
         if (isLocalUri(uri)) {
           return 'DIRECT';
         }
-        if (settings.mode == Settings.updateDownloadProxyCustom) {
+        if (settings.mode == Settings.updateNetworkDirect) {
+          return 'DIRECT';
+        }
+        if (settings.mode == Settings.updateNetworkManualProxy) {
           return buildCustomProxyRule(settings.customAddress);
         }
-        return findSystemProxyRule(uri);
+        final systemRule = findSystemProxyRule(uri);
+        return systemRule == 'DIRECT'
+            ? settings.automaticProxyRule ?? 'DIRECT'
+            : systemRule;
       };
       return client;
     };
+  }
+
+  static Future<String?> detectAutomaticProxyRule({
+    List<int> ports = const [7890, 7897, 1080],
+    Duration timeout = const Duration(milliseconds: 180),
+  }) async {
+    final hosts = <String>['127.0.0.1'];
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (!hosts.contains(address.address)) {
+            hosts.add(address.address);
+          }
+        }
+      }
+    } catch (_) {
+      // Network interface discovery is best effort.
+    }
+
+    for (final host in hosts) {
+      for (final port in ports) {
+        Socket? socket;
+        try {
+          socket = await Socket.connect(host, port, timeout: timeout);
+          return port == 1080 ? 'SOCKS $host:$port' : 'PROXY $host:$port';
+        } catch (_) {
+          // Try the next common local proxy endpoint.
+        } finally {
+          socket?.destroy();
+        }
+      }
+    }
+    return null;
   }
 
   static bool isLocalUri(Uri uri) {
@@ -1233,7 +1304,7 @@ $result |
 
     final withScheme = trimmed.contains('://') ? trimmed : 'http://$trimmed';
     final uri = Uri.tryParse(withScheme);
-    if (uri == null || uri.host.isEmpty || uri.port <= 0) {
+    if (uri == null || uri.host.isEmpty || !uri.hasPort || uri.port <= 0) {
       return 'DIRECT';
     }
 
@@ -1316,45 +1387,55 @@ $result |
 
   static Future<UpdateDownloadProxySettings>
   loadPersistedDownloadProxySettings() async {
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString('settings');
-    if (raw == null || raw.trim().isEmpty) {
-      return UpdateDownloadProxySettings.fromSettings(
-        Settings.defaultSettings(),
-      );
-    }
+    return UpdateDownloadProxySettings.fromSettings(
+      await loadPersistedUpdateSettings(),
+    );
+  }
+
+  static Future<Settings> loadPersistedUpdateSettings() async {
     try {
+      final preferences = await SharedPreferences.getInstance();
+      final raw = preferences.getString('settings');
+      if (raw == null || raw.trim().isEmpty) {
+        return Settings.defaultSettings();
+      }
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        return UpdateDownloadProxySettings.fromSettings(
-          Settings.fromJson(decoded),
-        );
+        return Settings.fromJson(decoded);
       }
       if (decoded is Map) {
-        return UpdateDownloadProxySettings.fromSettings(
-          Settings.fromJson(Map<String, dynamic>.from(decoded)),
-        );
+        return Settings.fromJson(Map<String, dynamic>.from(decoded));
       }
     } catch (_) {
       // ignore and fall back to defaults
     }
-    return UpdateDownloadProxySettings.fromSettings(Settings.defaultSettings());
+    return Settings.defaultSettings();
   }
 }
 
 class UpdateDownloadProxySettings {
   final String mode;
   final String customAddress;
+  final String? automaticProxyRule;
 
   const UpdateDownloadProxySettings({
     required this.mode,
     required this.customAddress,
+    this.automaticProxyRule,
   });
 
   factory UpdateDownloadProxySettings.fromSettings(Settings settings) {
     return UpdateDownloadProxySettings(
-      mode: settings.updateDownloadProxyMode,
-      customAddress: settings.updateDownloadProxyAddress,
+      mode: settings.updateNetworkMode,
+      customAddress: settings.updateManualProxyUrl,
+    );
+  }
+
+  UpdateDownloadProxySettings copyWith({String? automaticProxyRule}) {
+    return UpdateDownloadProxySettings(
+      mode: mode,
+      customAddress: customAddress,
+      automaticProxyRule: automaticProxyRule ?? this.automaticProxyRule,
     );
   }
 }

@@ -81,10 +81,7 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
 
     return AlertDialog(
       backgroundColor: AppColors.sidebar,
-      title: Text(
-        '发现新版本 ${info.version}',
-        style: const TextStyle(color: AppColors.text),
-      ),
+      title: const Text('更新已下载完成', style: TextStyle(color: AppColors.text)),
       content: SizedBox(
         width: 460,
         child: Column(
@@ -92,7 +89,12 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '安装包大小：${info.sizeLabel}',
+              '新版本 ${info.version} 已准备好。可以现在更新并重启，也可以安排到下次启动时更新。',
+              style: const TextStyle(color: AppColors.text),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '安装包大小：${info.sizeLabel}，完整性校验已通过。',
               style: const TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
@@ -144,7 +146,7 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
         if (!_isSubmitting && !info.mandatory)
           TextButton(
             onPressed: _installOnNextLaunch,
-            child: const Text('下次启动时更新'),
+            child: const Text('下次启动更新'),
           ),
         ElevatedButton(
           onPressed: _isSubmitting ? null : _installNow,
