@@ -131,7 +131,7 @@ class _UpdatePromptDialogState extends ConsumerState<UpdatePromptDialog> {
               ),
               const SizedBox(height: 8),
               const Text(
-                '正在启动安装包，请在弹出的安装向导中完成更新...',
+                '正在打开独立更新器。如系统请求管理员权限，请允许；之后无需操作。',
                 style: TextStyle(color: AppColors.textSecondary),
               ),
             ],

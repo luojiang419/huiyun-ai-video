@@ -474,11 +474,7 @@ class UpdateService {
       await _writeSessionLog(session.logFilePath, '安装包校验完成，准备执行静默安装');
       _emitInstallProgress(onProgress, session, '安装包校验完成，正在执行静默安装');
 
-      final installerProcess = await _processStarter(
-        session.installerPath,
-        _buildSilentInstallerArguments(session.installDir),
-      );
-      final exitCode = await installerProcess.exitCode;
+      final exitCode = await _runElevatedSilentInstaller(session);
       if (exitCode != 0) {
         throw UpdateException('安装器退出码: $exitCode');
       }
@@ -597,11 +593,20 @@ class UpdateService {
         throw const UpdateException('安装包校验失败，文件可能已损坏');
       }
 
-      await _startInstallerPackage(
-        installerPath: normalizedPending.installerPath,
+      final session = await _prepareDetachedInstallSession(
+        pending: normalizedPending,
         installDir: targetInstallDir,
-        executableName: path.basename(currentExecutablePath),
       );
+      await _processStarter(
+        session.stagedExecutablePath,
+        [
+          '${UpdateInstallSessionLaunchArgs.sessionIdPrefix}${session.sessionId}',
+          '${UpdateInstallSessionLaunchArgs.sessionFilePathPrefix}${_installSessionFilePathFor(session.installDir, session.sessionId)}',
+        ],
+        mode: ProcessStartMode.detached,
+        runInShell: false,
+      );
+      await _writeSessionLog(session.logFilePath, '独立更新器进程已启动，主程序准备退出');
       await Future<void>.delayed(const Duration(milliseconds: 500));
       _exitHandler(0);
     } catch (error) {
@@ -649,71 +654,182 @@ class UpdateService {
     await _ensureUpdateDirectoriesFor(appDirectory);
   }
 
-  List<String> _buildSilentInstallerArguments(String installDir) {
-    return [
-      '/VERYSILENT',
-      '/SUPPRESSMSGBOXES',
-      '/NOCANCEL',
-      '/CLOSEAPPLICATIONS',
-      '/FORCECLOSEAPPLICATIONS',
-      '/DIR=$installDir',
-    ];
-  }
-
-  Future<void> _startInstallerPackage({
-    required String installerPath,
+  Future<UpdateInstallSession> _prepareDetachedInstallSession({
+    required PendingUpdateJob pending,
     required String installDir,
-    required String executableName,
   }) async {
-    final logDir = _logsDirectoryPathFor(installDir);
-    final scriptPath = path.join(logDir, 'launch-installer.ps1');
-    final launcherLogPath = path.join(logDir, 'installer-launch.log');
-    final installerLogPath = path.join(logDir, 'installer-package.log');
-    final targetExecutablePath = path.join(installDir, executableName);
-    await Directory(logDir).create(recursive: true);
-
-    final scriptLines = <String>[
-      r"$ErrorActionPreference = 'Stop'",
-      '\$pidToWait = $pid',
-      '\$installerPath = ${_toPowerShellSingleQuotedLiteral(installerPath)}',
-      '\$installDir = ${_toPowerShellSingleQuotedLiteral(installDir)}',
-      '\$targetExecutablePath = ${_toPowerShellSingleQuotedLiteral(targetExecutablePath)}',
-      '\$logPath = ${_toPowerShellSingleQuotedLiteral(launcherLogPath)}',
-      '\$installerUiLogPath = ${_toPowerShellSingleQuotedLiteral(installerLogPath)}',
-      r'function Write-UpdateLog([string]$message) {',
-      r"  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'",
-      r"  Add-Content -LiteralPath $logPath -Value ($timestamp + ' ' + $message) -Encoding UTF8",
-      r'}',
-      r'Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue',
-      r'try {',
-      r"  Write-UpdateLog 'update launcher started'",
-      r"  Write-UpdateLog ('waiting old process, pid=' + $pidToWait)",
-      r'  while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }',
-      r'  Start-Sleep -Milliseconds 800',
-      r"  if (-not (Test-Path -LiteralPath $installerPath)) { throw ('installer not found: ' + $installerPath) }",
-      r"  Write-UpdateLog ('starting installer: ' + $installerPath)",
-      "  \$installerDirArg = '/DIR=\"' + \$installDir + '\"'",
-      "  \$installerLogArg = '/LOG=\"' + \$installerUiLogPath + '\"'",
-      r"  $installerArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NOCANCEL', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', '/NORESTART', $installerDirArg, $installerLogArg)",
-      r'  $process = Start-Process -FilePath $installerPath -ArgumentList $installerArgs -Verb RunAs -PassThru',
-      r'  $process.WaitForExit()',
-      r"  Write-UpdateLog ('installer finished, exitCode=' + $process.ExitCode)",
-      "  if (\$process.ExitCode -ne 0) { throw ('installer exit code: ' + \$process.ExitCode) }",
-      r"  Write-UpdateLog 'installer completed'",
-      r"  if (-not (Test-Path -LiteralPath $targetExecutablePath)) { throw ('target executable not found: ' + $targetExecutablePath) }",
-      r'  Start-Process -FilePath $targetExecutablePath -WorkingDirectory $installDir',
-      r"  Write-UpdateLog ('new application started: ' + $targetExecutablePath)",
-      r'} catch {',
-      r"  Write-UpdateLog ('update launcher failed: ' + $_.Exception.Message)",
-      r'}',
-      r'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
-    ];
-    await File(scriptPath).writeAsBytes(
-      utf8.encode('\uFEFF${scriptLines.join('\r\n')}'),
-      flush: true,
+    await _ensureUpdateDirectoriesFor(installDir);
+    final sessionId = 'update_${DateTime.now().microsecondsSinceEpoch}_$pid';
+    final executableName = path.basename(currentExecutablePath);
+    final stagingSessionDir = path.join(
+      _stagingDirectoryPathFor(installDir),
+      sessionId,
+    );
+    final stagedRuntimeDir = path.join(stagingSessionDir, 'runtime');
+    final stagedExecutablePath = path.join(stagedRuntimeDir, executableName);
+    await _stageUpdaterRuntime(
+      sourceRootDir: appDirectory,
+      sourceExecutablePath: currentExecutablePath,
+      targetRuntimeDir: stagedRuntimeDir,
     );
 
-    await _processStarter(
+    final session = UpdateInstallSession(
+      sessionId: sessionId,
+      targetVersion: pending.targetVersion,
+      installerPath: pending.installerPath,
+      installerSha256: pending.sha256,
+      installDir: installDir,
+      executableName: executableName,
+      targetExecutablePath: path.join(installDir, executableName),
+      stagedRuntimeDir: stagedRuntimeDir,
+      stagedExecutablePath: stagedExecutablePath,
+      pendingUpdateFilePath: _pendingUpdateFilePathFor(installDir),
+      sourcePendingUpdateFilePath: pendingUpdateFilePath,
+      resultFilePath: path.join(
+        _resultsDirectoryPathFor(installDir),
+        '$sessionId.json',
+      ),
+      ackFilePath: path.join(
+        _acksDirectoryPathFor(installDir),
+        '$sessionId.ack',
+      ),
+      logFilePath: path.join(
+        _logsDirectoryPathFor(installDir),
+        '$sessionId.log',
+      ),
+      createdAt: DateTime.now().toIso8601String(),
+      parentPid: pid,
+      status: UpdateInstallSessionStatus.launching,
+    );
+    await saveInstallSession(
+      session,
+      sessionFilePath: _installSessionFilePathFor(installDir, sessionId),
+    );
+    await _writeSessionLog(
+      session.logFilePath,
+      '已准备 storyboard 同款独立更新器运行时，等待接管安装',
+    );
+    return session;
+  }
+
+  Future<void> _stageUpdaterRuntime({
+    required String sourceRootDir,
+    required String sourceExecutablePath,
+    required String targetRuntimeDir,
+  }) async {
+    final sourceRoot = Directory(sourceRootDir);
+    if (!await sourceRoot.exists()) {
+      throw UpdateException('更新器源目录不存在: $sourceRootDir');
+    }
+    final targetRoot = Directory(targetRuntimeDir);
+    if (await targetRoot.exists()) {
+      await targetRoot.delete(recursive: true);
+    }
+    await targetRoot.create(recursive: true);
+
+    await for (final entity in sourceRoot.list(followLinks: false)) {
+      final name = path.basename(entity.path);
+      if (entity is File) {
+        await entity.copy(path.join(targetRoot.path, name));
+        continue;
+      }
+      if (entity is Directory && name.toLowerCase() == 'data') {
+        await _copyUpdaterRuntimeData(
+          entity,
+          Directory(path.join(targetRoot.path, name)),
+        );
+      }
+    }
+
+    final stagedExecutable = File(
+      path.join(targetRoot.path, path.basename(sourceExecutablePath)),
+    );
+    if (!await stagedExecutable.exists()) {
+      throw UpdateException('临时更新器主程序不存在: ${stagedExecutable.path}');
+    }
+  }
+
+  Future<void> _copyUpdaterRuntimeData(
+    Directory source,
+    Directory target,
+  ) async {
+    await target.create(recursive: true);
+    for (final fileName in const ['app.so', 'icudtl.dat']) {
+      final file = File(path.join(source.path, fileName));
+      if (await file.exists()) {
+        await file.copy(path.join(target.path, fileName));
+      }
+    }
+    final flutterAssets = Directory(path.join(source.path, 'flutter_assets'));
+    if (await flutterAssets.exists()) {
+      await _copyDirectoryRecursively(
+        flutterAssets,
+        Directory(path.join(target.path, 'flutter_assets')),
+      );
+    }
+  }
+
+  Future<void> _copyDirectoryRecursively(
+    Directory source,
+    Directory target,
+  ) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(followLinks: false)) {
+      final targetPath = path.join(target.path, path.basename(entity.path));
+      if (entity is File) {
+        await entity.copy(targetPath);
+      } else if (entity is Directory) {
+        await _copyDirectoryRecursively(entity, Directory(targetPath));
+      }
+    }
+  }
+
+  Future<int> _runElevatedSilentInstaller(UpdateInstallSession session) async {
+    final logDir = _logsDirectoryPathFor(session.installDir);
+    await Directory(logDir).create(recursive: true);
+    final scriptPath = path.join(logDir, '${session.sessionId}-install.ps1');
+    final installerLogPath = path.join(
+      logDir,
+      '${session.sessionId}-installer.log',
+    );
+    final scriptLines = <String>[
+      r"$ErrorActionPreference = 'Stop'",
+      '\$installerPath = ${_toPowerShellSingleQuotedLiteral(session.installerPath)}',
+      '\$appDir = ${_toPowerShellSingleQuotedLiteral(session.installDir)}',
+      '\$installerLogPath = ${_toPowerShellSingleQuotedLiteral(installerLogPath)}',
+      '\$scriptLogPath = ${_toPowerShellSingleQuotedLiteral(session.logFilePath)}',
+      r'function Write-UpdateLog([string]$message) {',
+      r"  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'",
+      r"  Add-Content -LiteralPath $scriptLogPath -Value ('[' + $timestamp + '] ' + $message) -Encoding UTF8",
+      r'}',
+      r'try {',
+      "  Write-UpdateLog '独立更新器开始无交互静默安装，目标版本：${session.targetVersion}'",
+      r'  $installerArgs = @(',
+      r"    '/SP-',",
+      r"    '/VERYSILENT',",
+      r"    '/SUPPRESSMSGBOXES',",
+      r"    '/NORESTART',",
+      r"    '/NOCANCEL',",
+      r"    '/CLOSEAPPLICATIONS',",
+      r"    '/FORCECLOSEAPPLICATIONS',",
+      r'    "/DIR=`"$appDir`"",',
+      r'    "/LOG=`"$installerLogPath`""',
+      r'  )',
+      r'  $process = Start-Process -FilePath $installerPath -ArgumentList $installerArgs -Verb RunAs -Wait -PassThru',
+      r"  Write-UpdateLog ('安装进程已结束，ExitCode=' + $process.ExitCode)",
+      r'  exit $process.ExitCode',
+      r'} catch {',
+      r"  Write-UpdateLog ('静默安装脚本失败：' + $_.Exception.Message)",
+      r'  exit 1',
+      r'}',
+    ];
+    await File(scriptPath).writeAsBytes([
+      0xEF,
+      0xBB,
+      0xBF,
+      ...utf8.encode(scriptLines.join('\r\n')),
+    ], flush: true);
+    final process = await _processStarter(
       'powershell.exe',
       [
         '-NoProfile',
@@ -724,20 +840,14 @@ class UpdateService {
         '-File',
         scriptPath,
       ],
-      // On Windows, Dart's detached mode can start powershell.exe and still
-      // have it exit before running the script. A normal child keeps running
-      // after this app exits and reliably executes the launcher script.
       mode: ProcessStartMode.normal,
       runInShell: false,
     );
+    return process.exitCode;
   }
 
   String _toPowerShellSingleQuotedLiteral(String value) {
-    return "'${_escapePowerShellSingleQuotedString(value)}'";
-  }
-
-  String _escapePowerShellSingleQuotedString(String value) {
-    return value.replaceAll("'", "''");
+    return "'${value.replaceAll("'", "''")}'";
   }
 
   String _updatesRootDirectoryPathFor(String installDir) {
@@ -1151,8 +1261,22 @@ $result |
     UpdateInstallSession session,
   ) async {
     final stagingSessionDir = Directory(path.dirname(session.stagedRuntimeDir));
-    if (await stagingSessionDir.exists()) {
-      await stagingSessionDir.delete(recursive: true);
+    var stagingCleaned = !await stagingSessionDir.exists();
+    for (var attempt = 0; attempt < 10 && !stagingCleaned; attempt += 1) {
+      try {
+        await stagingSessionDir.delete(recursive: true);
+        stagingCleaned = true;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        stagingCleaned = !await stagingSessionDir.exists();
+      }
+    }
+    if (!stagingCleaned) {
+      await _writeSessionLog(
+        session.logFilePath,
+        '更新器运行时仍被占用，本次保留会话并在下次启动继续清理',
+      );
+      return;
     }
 
     final sessionFile = File(
@@ -1160,6 +1284,15 @@ $result |
     );
     if (await sessionFile.exists()) {
       await sessionFile.delete();
+    }
+    final scriptFile = File(
+      path.join(
+        _logsDirectoryPathFor(session.installDir),
+        '${session.sessionId}-install.ps1',
+      ),
+    );
+    if (await scriptFile.exists()) {
+      await scriptFile.delete();
     }
   }
 

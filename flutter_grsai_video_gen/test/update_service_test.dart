@@ -197,30 +197,31 @@ void main() {
       await service.launchSilentUpdateAndExit(job: pendingJob);
 
       expect(exitCode, 0);
-      expect(launchedExecutable, 'powershell.exe');
-      expect(launchedMode, ProcessStartMode.normal);
+      expect(path.basename(launchedExecutable!), path.basename(exeFile.path));
+      expect(
+        launchedExecutable,
+        contains('${path.separator}staging${path.separator}'),
+      );
+      expect(launchedMode, ProcessStartMode.detached);
       expect(launchedRunInShell, isFalse);
       expect(launchedArguments, isNotNull);
-      final fileIndex = launchedArguments!.indexOf('-File');
-      expect(fileIndex, greaterThanOrEqualTo(0));
-      expect(launchedArguments, contains('Hidden'));
-      final scriptPath = launchedArguments![fileIndex + 1];
-      final scriptFile = File(scriptPath);
-      expect(scriptFile.existsSync(), isTrue);
-      await _expectUtf8Bom(scriptFile);
-      final script = await scriptFile.readAsString();
-      expect(script, contains(installerFile.path));
-      expect(script, contains(appDir.path));
-      expect(script, contains('Start-Process -FilePath'));
-      expect(script, contains('-Verb RunAs'));
-      expect(script, contains(r'$installerDirArg'));
-      expect(script, contains('/VERYSILENT'));
-      expect(script, contains('/SUPPRESSMSGBOXES'));
-      expect(script, contains('/NORESTART'));
-      expect(script, contains(r'$process.WaitForExit()'));
-      expect(script, isNot(contains('-Wait -PassThru')));
-      expect(script, contains(exeFile.path));
-      expect(script, contains('new application started'));
+      final launchArgs = UpdateInstallSessionLaunchArgs.tryParse(
+        launchedArguments!,
+      );
+      expect(launchArgs, isNotNull);
+      final session = await service.loadInstallSession(
+        sessionFilePath: launchArgs!.sessionFilePath,
+      );
+      expect(session, isNotNull);
+      expect(session!.targetVersion, 'V6.9');
+      expect(session.installerPath, installerFile.path);
+      expect(session.installDir, appDir.path);
+      expect(session.status, UpdateInstallSessionStatus.launching);
+      expect(File(session.stagedExecutablePath).existsSync(), isTrue);
+      expect(
+        session.stagedExecutablePath,
+        contains('${path.separator}staging${path.separator}'),
+      );
 
       final pendingJson =
           jsonDecode(await File(service.pendingUpdateFilePath).readAsString())
@@ -228,7 +229,7 @@ void main() {
       expect(pendingJson['targetVersion'], 'V6.9');
       expect(pendingJson['installerPath'], installerFile.path);
       expect(pendingJson['status'], PendingUpdateStatus.installing.value);
-      expect(Directory(service.stagingDirectoryPath).existsSync(), isFalse);
+      expect(Directory(service.stagingDirectoryPath).existsSync(), isTrue);
     },
   );
 
@@ -297,29 +298,33 @@ void main() {
 
       await service.launchSilentUpdateAndExit(job: pendingJob);
 
-      expect(launchedExecutable, 'powershell.exe');
-      expect(launchedArguments, isNotNull);
-      final fileIndex = launchedArguments!.indexOf('-File');
-      expect(fileIndex, greaterThanOrEqualTo(0));
-      final scriptPath = launchedArguments![fileIndex + 1];
-      final scriptFile = File(scriptPath);
-      expect(scriptFile.existsSync(), isTrue);
-      await _expectUtf8Bom(scriptFile);
-      final script = await scriptFile.readAsString();
-      expect(script, contains(installerFile.path));
-      expect(script, contains(formalInstallDir.path));
-      expect(script, contains('Start-Process -FilePath'));
-      expect(script, contains('-Verb RunAs'));
-      expect(script, contains('/VERYSILENT'));
-      expect(script, contains(r'$process.WaitForExit()'));
-      expect(script, isNot(contains('-Wait -PassThru')));
       expect(
-        script,
-        contains(
-          path.join(formalInstallDir.path, 'flutter_grsai_image_gen.exe'),
-        ),
+        path.basename(launchedExecutable!),
+        path.basename(snapshotExe.path),
       );
-      expect(script, contains('new application started'));
+      expect(
+        launchedExecutable,
+        contains('${path.separator}staging${path.separator}'),
+      );
+      expect(launchedArguments, isNotNull);
+      final launchArgs = UpdateInstallSessionLaunchArgs.tryParse(
+        launchedArguments!,
+      );
+      expect(launchArgs, isNotNull);
+      final session = await service.loadInstallSession(
+        sessionFilePath: launchArgs!.sessionFilePath,
+      );
+      expect(session, isNotNull);
+      expect(session!.installDir, formalInstallDir.path);
+      expect(
+        session.targetExecutablePath,
+        path.join(formalInstallDir.path, 'flutter_grsai_image_gen.exe'),
+      );
+      expect(
+        session.sourcePendingUpdateFilePath,
+        service.pendingUpdateFilePath,
+      );
+      expect(File(session.stagedExecutablePath).existsSync(), isTrue);
 
       final mirroredPendingFile = File(
         path.join(
@@ -357,12 +362,107 @@ void main() {
         snapshotPendingJson['status'],
         PendingUpdateStatus.installing.value,
       );
-      expect(
-        File(
-          path.join(formalInstallDir.path, 'data', '.system_update', 'jobs'),
-        ).existsSync(),
-        isFalse,
+      expect(File(launchArgs.sessionFilePath).existsSync(), isTrue);
+    },
+  );
+
+  test(
+    'runDetachedInstallSession uses storyboard style silent installer and relaunches once',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp('update_service_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final appDir = Directory(path.join(tempDir.path, 'app'));
+      await appDir.create(recursive: true);
+      final executable = File(
+        path.join(appDir.path, 'flutter_grsai_image_gen.exe'),
       );
+      await executable.writeAsString('new-exe');
+      final installer = File(path.join(tempDir.path, 'installer.exe'));
+      await installer.writeAsString('installer-body');
+      final installerHash = await UpdateService.calculateSha256(installer.path);
+
+      final launches =
+          <
+            ({
+              String executable,
+              List<String> arguments,
+              ProcessStartMode mode,
+              bool runInShell,
+            })
+          >[];
+      final service = UpdateService(
+        appDirectory: appDir.path,
+        resolvedExecutableProvider: () => executable.path,
+        isWindowsProvider: () => true,
+        processStarter:
+            (
+              launchedExecutable,
+              arguments, {
+              mode = ProcessStartMode.normal,
+              runInShell = false,
+            }) async {
+              launches.add((
+                executable: launchedExecutable,
+                arguments: List<String>.from(arguments),
+                mode: mode,
+                runInShell: runInShell,
+              ));
+              return Process.start('cmd.exe', const ['/c', 'exit', '0']);
+            },
+      );
+      final session =
+          _session(
+            service: service,
+            sessionId: 'storyboard-style-install',
+            targetVersion: 'V10.0.5',
+          ).copyWith(
+            installerPath: installer.path,
+            installerSha256: installerHash,
+            parentPid: 0,
+            status: UpdateInstallSessionStatus.prepared,
+          );
+      await service.saveInstallSession(session);
+      final progress = <String>[];
+
+      await service.runDetachedInstallSession(
+        sessionFilePath: path.join(
+          service.jobsDirectoryPath,
+          '${session.sessionId}.json',
+        ),
+        expectedSessionId: session.sessionId,
+        onProgress: (_, message) => progress.add(message),
+      );
+
+      expect(launches, hasLength(2));
+      expect(launches.first.executable, 'powershell.exe');
+      expect(launches.first.mode, ProcessStartMode.normal);
+      expect(launches.first.runInShell, isFalse);
+      expect(launches.first.arguments, contains('Hidden'));
+      final fileIndex = launches.first.arguments.indexOf('-File');
+      expect(fileIndex, greaterThanOrEqualTo(0));
+      final scriptFile = File(launches.first.arguments[fileIndex + 1]);
+      expect(scriptFile.existsSync(), isTrue);
+      await _expectUtf8Bom(scriptFile);
+      final script = await scriptFile.readAsString();
+      expect(script, contains('/SP-'));
+      expect(script, contains('/VERYSILENT'));
+      expect(script, contains('/SUPPRESSMSGBOXES'));
+      expect(script, contains('/NORESTART'));
+      expect(script, contains('/NOCANCEL'));
+      expect(script, contains('/FORCECLOSEAPPLICATIONS'));
+      expect(script, contains('-Verb RunAs -Wait -PassThru'));
+      expect(launches.last.executable, executable.path);
+      expect(launches.last.mode, ProcessStartMode.detached);
+      expect(launches.last.arguments, isEmpty);
+      final completed = await service.loadInstallSession(
+        sessionFilePath: path.join(
+          service.jobsDirectoryPath,
+          '${session.sessionId}.json',
+        ),
+      );
+      expect(completed!.status, UpdateInstallSessionStatus.completed);
+      expect(progress.last, contains('新版本已启动'));
     },
   );
 
