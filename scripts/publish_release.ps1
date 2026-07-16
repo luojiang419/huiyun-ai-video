@@ -99,7 +99,7 @@ try {
   try {
     $remoteTagLine = git ls-remote --tags origin "refs/tags/$Version"
     if ([string]::IsNullOrWhiteSpace($remoteTagLine)) {
-      git tag -a $Version $SourceSha -m "Release $Version"
+      git tag $Version $SourceSha
       if ($LASTEXITCODE -ne 0) { throw "创建源码标签失败" }
       git push origin "refs/tags/$Version"
       if ($LASTEXITCODE -ne 0) { throw "推送源码标签失败" }
