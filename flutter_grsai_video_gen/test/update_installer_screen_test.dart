@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_grsai_video_gen/models/update_install_session.dart';
@@ -46,7 +47,7 @@ class _FakeUpdateInstallerService extends UpdateService {
       ),
     );
 
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await Future<void>.delayed(const Duration(seconds: 1));
     if (shouldFail) {
       final failedSession = session.copyWith(
         status: UpdateInstallSessionStatus.failed,
@@ -105,6 +106,21 @@ UpdateInstallSession _buildSession() {
   );
 }
 
+int _visibleProgressPercent(WidgetTester tester) {
+  final text = tester.widget<Text>(
+    find.byKey(const Key('update-progress-percent')),
+  );
+  return int.parse(text.data!.replaceFirst('%', ''));
+}
+
+double _visibleProgressBarValue(WidgetTester tester) {
+  return tester
+      .widget<LinearProgressIndicator>(
+        find.byKey(const Key('update-progress-bar')),
+      )
+      .value!;
+}
+
 void main() {
   const launchArgs = UpdateInstallSessionLaunchArgs(
     sessionId: 'session-1',
@@ -130,15 +146,36 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 25));
       expect(find.text('写入程序文件'), findsWidgets);
-      expect(find.text('55%'), findsOneWidget);
       expect(find.text('正在静默安装程序文件（安装器进度 50%）'), findsOneWidget);
       expect(find.textContaining('安装器内部进度：50%'), findsOneWidget);
 
-      await tester.pump(const Duration(milliseconds: 30));
+      final animationStart = _visibleProgressPercent(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      final animationMiddle = _visibleProgressPercent(tester);
+      expect(animationMiddle, greaterThan(animationStart));
+      expect(animationMiddle, lessThan(55));
+      expect(
+        _visibleProgressBarValue(tester),
+        closeTo(animationMiddle / 100, 0.02),
+      );
+
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(_visibleProgressPercent(tester), 55);
+      expect(_visibleProgressBarValue(tester), 0.55);
+
+      await tester.pump(const Duration(milliseconds: 250));
       expect(find.text('更新完成'), findsOneWidget);
       expect(find.text('新版本正在启动，本窗口即将自动关闭。'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 200));
+      final completionAnimation = _visibleProgressPercent(tester);
+      expect(completionAnimation, greaterThan(55));
+      expect(completionAnimation, lessThan(100));
 
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(_visibleProgressPercent(tester), 100);
+      expect(_visibleProgressBarValue(tester), 1);
+
+      await tester.pump(const Duration(milliseconds: 200));
       expect(exitCode, 0);
       expect(service.loadCount, greaterThanOrEqualTo(1));
       expect(service.runCount, 1);
@@ -161,10 +198,12 @@ void main() {
       );
 
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 60));
+      await tester.pump(const Duration(milliseconds: 1100));
 
       expect(find.text('更新失败'), findsOneWidget);
       expect(find.text('安装更新失败，请稍后重试。'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(_visibleProgressPercent(tester), 55);
       expect(find.textContaining('安装器退出码: 1'), findsWidgets);
       expect(find.textContaining(r'session-1.log'), findsOneWidget);
     },

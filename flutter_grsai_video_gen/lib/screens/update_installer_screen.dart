@@ -55,6 +55,8 @@ class UpdateInstallerScreen extends ConsumerStatefulWidget {
 }
 
 class _UpdateInstallerScreenState extends ConsumerState<UpdateInstallerScreen> {
+  static const _progressAnimationDuration = Duration(milliseconds: 800);
+
   UpdateInstallSession? _session;
   String _headline = '正在准备更新';
   String _message = '正在接管更新任务，请勿关闭此窗口。';
@@ -303,37 +305,61 @@ class _UpdateInstallerScreenState extends ConsumerState<UpdateInstallerScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: const Text(
-                      '总体安装进度',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${_progress.percentage}%',
-                    style: TextStyle(
-                      color: _isFailed ? Colors.redAccent : AppColors.primary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 8,
-                  value: _progress.percentage / 100,
-                  backgroundColor: AppColors.border1,
-                  color: _isFailed ? Colors.redAccent : AppColors.primary,
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(
+                  begin: 0,
+                  end: _progress.percentage.toDouble(),
                 ),
+                duration: _progressAnimationDuration,
+                curve: Curves.easeOutCubic,
+                builder: (context, animatedPercentage, child) {
+                  final visiblePercentage = animatedPercentage.clamp(
+                    0.0,
+                    _progress.percentage.toDouble(),
+                  );
+                  return Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              '总体安装进度',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${visiblePercentage.round()}%',
+                            key: const Key('update-progress-percent'),
+                            style: TextStyle(
+                              color: _isFailed
+                                  ? Colors.redAccent
+                                  : AppColors.primary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          key: const Key('update-progress-bar'),
+                          minHeight: 8,
+                          value: visiblePercentage / 100,
+                          backgroundColor: AppColors.border1,
+                          color: _isFailed
+                              ? Colors.redAccent
+                              : AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 18),
               Text(
