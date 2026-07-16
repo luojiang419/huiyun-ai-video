@@ -217,6 +217,8 @@ void main() {
       expect(script, contains('/VERYSILENT'));
       expect(script, contains('/SUPPRESSMSGBOXES'));
       expect(script, contains('/NORESTART'));
+      expect(script, contains(r'$process.WaitForExit()'));
+      expect(script, isNot(contains('-Wait -PassThru')));
       expect(script, contains(exeFile.path));
       expect(script, contains('new application started'));
 
@@ -309,6 +311,8 @@ void main() {
       expect(script, contains('Start-Process -FilePath'));
       expect(script, contains('-Verb RunAs'));
       expect(script, contains('/VERYSILENT'));
+      expect(script, contains(r'$process.WaitForExit()'));
+      expect(script, isNot(contains('-Wait -PassThru')));
       expect(
         script,
         contains(
