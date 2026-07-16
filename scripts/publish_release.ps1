@@ -40,6 +40,35 @@ function Get-ReleaseOrNull {
   }
 }
 
+function Wait-Release {
+  param([int]$Attempts = 10)
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    $release = Get-ReleaseOrNull
+    if ($null -ne $release) { return $release }
+    if ($attempt -lt $Attempts) { Start-Sleep -Seconds 2 }
+  }
+  return $null
+}
+
+function Wait-LatestRelease {
+  param([int]$Attempts = 10)
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    try {
+      $candidate = (& gh api "repos/$Repo/releases/latest") | ConvertFrom-Json
+      if ($LASTEXITCODE -eq 0 -and
+          $candidate.tag_name -eq $Version -and
+          -not $candidate.draft -and
+          -not $candidate.prerelease) {
+        return $candidate
+      }
+    } catch {
+      # Retry eventual consistency after publishing the draft.
+    }
+    if ($attempt -lt $Attempts) { Start-Sleep -Seconds 2 }
+  }
+  return $null
+}
+
 function Assert-RemoteAssets {
   param([object]$Release)
   $expected = @(
@@ -89,7 +118,7 @@ try {
     --repo $Repo `
     --clobber
 
-  $draft = Get-ReleaseOrNull
+  $draft = Wait-Release
   if ($null -eq $draft -or -not $draft.draft -or $draft.prerelease) {
     throw "Draft Release 状态异常"
   }
@@ -119,14 +148,22 @@ try {
   }
 
   Invoke-Gh release edit $Version --repo $Repo --draft=false --latest
-  $latest = (& gh api "repos/$Repo/releases/latest") | ConvertFrom-Json
-  if ($LASTEXITCODE -ne 0) { throw "读取 Latest Release 失败" }
-  if ($latest.tag_name -ne $Version -or $latest.draft -or $latest.prerelease) {
+  $latest = Wait-LatestRelease
+  if ($null -eq $latest) {
     throw "Latest Release 未指向 $Version"
   }
   Assert-RemoteAssets -Release $latest
   $publicManifestAsset = @($latest.assets | Where-Object { $_.name -eq 'update.json' })[0]
-  $publicManifest = Invoke-RestMethod -Uri $publicManifestAsset.browser_download_url
+  $publicManifest = $null
+  for ($attempt = 1; $attempt -le 10; $attempt++) {
+    try {
+      $publicManifest = Invoke-RestMethod -Uri $publicManifestAsset.browser_download_url
+      break
+    } catch {
+      if ($attempt -lt 10) { Start-Sleep -Seconds 2 }
+    }
+  }
+  if ($null -eq $publicManifest) { throw "公开 update.json 下载失败" }
   if ($publicManifest.version -ne $Version -or
       $publicManifest.sourceSha -ne $SourceSha -or
       $publicManifest.sha256 -ne (Get-FileHash $InstallerPath -Algorithm SHA256).Hash) {
@@ -135,7 +172,7 @@ try {
   Write-Host "正式 Release 发布并远端复核成功：$($latest.html_url)"
 } catch {
   if ($createdDraft) {
-    $release = Get-ReleaseOrNull
+    $release = Wait-Release -Attempts 3
     if ($null -ne $release -and $release.draft) {
       & gh release delete $Version --repo $Repo --yes --cleanup-tag 2>$null
     }
