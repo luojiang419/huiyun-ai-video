@@ -59,4 +59,37 @@ void main() {
       expect(parsed.sessionFilePath, r'C:\Temp\session-1.json');
     },
   );
+
+  test('main arguments route staged executable into updater mode', () {
+    final parsed = resolveUpdateInstallSessionLaunchArgs(
+      [
+        '--run-update-session=staged-session',
+        r'--update-session-file=D:\Updates\staged-session.json',
+      ],
+      fallbackExecutableArguments: [
+        '--run-update-session=wrong-fallback',
+        r'--update-session-file=D:\Updates\wrong.json',
+      ],
+    );
+
+    expect(parsed, isNotNull);
+    expect(parsed!.sessionId, 'staged-session');
+    expect(parsed.sessionFilePath, r'D:\Updates\staged-session.json');
+  });
+
+  test(
+    'executable argument fallback preserves legacy launch compatibility',
+    () {
+      final parsed = resolveUpdateInstallSessionLaunchArgs(
+        const [],
+        fallbackExecutableArguments: [
+          '--run-update-session=legacy-session',
+          r'--update-session-file=D:\Updates\legacy-session.json',
+        ],
+      );
+
+      expect(parsed, isNotNull);
+      expect(parsed!.sessionId, 'legacy-session');
+    },
+  );
 }

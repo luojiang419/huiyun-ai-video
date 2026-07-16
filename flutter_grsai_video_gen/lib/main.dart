@@ -12,10 +12,11 @@ import 'services/file_service.dart';
 import 'services/config_file_service.dart';
 import 'services/update_service.dart';
 
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final updateLaunchArgs = UpdateInstallSessionLaunchArgs.tryParse(
-    Platform.executableArguments,
+  final updateLaunchArgs = resolveUpdateInstallSessionLaunchArgs(
+    args,
+    fallbackExecutableArguments: Platform.executableArguments,
   );
   if (updateLaunchArgs != null) {
     await _runUpdateInstallerMode(updateLaunchArgs);
@@ -54,9 +55,7 @@ Future<void> _runUpdateInstallerMode(
     await windowManager.focus();
   });
 
-  runApp(
-    ProviderScope(child: UpdateInstallerApp(launchArgs: launchArgs)),
-  );
+  runApp(ProviderScope(child: UpdateInstallerApp(launchArgs: launchArgs)));
 }
 
 Future<void> _runMainApplication() async {

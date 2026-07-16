@@ -211,3 +211,11 @@ class UpdateInstallSessionLaunchArgs {
     );
   }
 }
+
+UpdateInstallSessionLaunchArgs? resolveUpdateInstallSessionLaunchArgs(
+  List<String> mainArguments, {
+  List<String> fallbackExecutableArguments = const [],
+}) {
+  return UpdateInstallSessionLaunchArgs.tryParse(mainArguments) ??
+      UpdateInstallSessionLaunchArgs.tryParse(fallbackExecutableArguments);
+}
