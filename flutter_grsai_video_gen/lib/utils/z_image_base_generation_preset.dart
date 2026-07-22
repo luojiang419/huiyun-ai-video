@@ -4,6 +4,7 @@ class ZImageBaseGenerationPreset {
     '1:1',
     '16:9',
     '9:16',
+    '4:5',
     '4:3',
     '3:4',
     '3:2',
@@ -49,6 +50,13 @@ class ZImageBaseGenerationPreset {
           : size == '2K'
           ? '864x1536'
           : '720x1280';
+    }
+    if (ratio == '4:5') {
+      return size == '4K'
+          ? '1632x2048'
+          : size == '2K'
+          ? '1216x1536'
+          : '1024x1280';
     }
     if (ratio == '4:3') {
       return size == '4K'

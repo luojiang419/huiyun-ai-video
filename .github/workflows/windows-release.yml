@@ -94,7 +94,7 @@ jobs:
             -InstallerPath '${{ steps.build.outputs.installer }}' `
             -SourceSha '${{ github.sha }}' `
             -Repo $env:RELEASE_REPO `
-            -ReleaseNotes '自动更新三态、网络三态与云端发布链路更新。'
+            -ReleaseNotes '图片生成比例下拉选项新增 4:5，并修复 Z-Image 对应竖版分辨率传参。'
 
       - name: Publish transactionally and verify Latest
         if: steps.version.outputs.skip != 'true'

@@ -104,6 +104,7 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
     '1:1',
     '16:9',
     '9:16',
+    '4:5',
     '4:3',
     '3:4',
     '3:2',

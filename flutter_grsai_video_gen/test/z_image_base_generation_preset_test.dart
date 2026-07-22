@@ -21,6 +21,11 @@ void main() {
       ZImageBaseGenerationPreset.resolveResolution('16:9', '2K'),
       '1536x864',
     );
+    expect(ZImageBaseGenerationPreset.aspectRatios, contains('4:5'));
+    expect(
+      ZImageBaseGenerationPreset.resolveResolution('4:5', '2K'),
+      '1216x1536',
+    );
     expect(
       ZImageBaseGenerationPreset.resolveResolution('1:1', '4K'),
       '2048x2048',

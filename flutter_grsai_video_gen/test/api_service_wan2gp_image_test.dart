@@ -127,7 +127,7 @@ void main() {
         apiKey: '',
         model: 'z_image_base',
         prompt: 'bridge smoke prompt',
-        aspectRatio: '16:9',
+        aspectRatio: '4:5',
         imageSize: '2K',
         sampleSteps: 52,
       )) {
@@ -137,7 +137,7 @@ void main() {
       expect(submittedBody, isNotNull);
       expect(submittedBody!['task_type'], 'image');
       expect(submittedBody!['model_name'], 'z_image_base');
-      expect(submittedBody!['resolution'], '1536x864');
+      expect(submittedBody!['resolution'], '1216x1536');
       expect(submittedBody!['sample_steps'], 52);
       expect(submittedBody!['guide_scale'], 4.0);
       expect(submittedBody!['shift_scale'], 6.0);
